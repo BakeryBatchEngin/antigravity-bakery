@@ -1,87 +1,113 @@
-import sqlite3 from 'sqlite3';
-import { open, Database } from 'sqlite';
-import path from 'path';
+import { Pool } from 'pg';
 
-// データベースへの接続を保持する変数
-let db: Database | null = null;
+// Supabase (PostgreSQL) 接続用のプールを作成
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // もしVercelやSupabaseの証明書関連でエラーが出る場合はsslを有効にしますが、
+  // デフォルトでURLに含まれているパラメータが効くため 일단そのままにします
+});
 
 /**
- * SQLiteデータベースへの接続を取得する非同期関数
- * (Singletonパターンで常に同一の接続を返すようにしています)
+ * 【自動翻訳エンジン】
+ * SQLiteの ? プレースホルダを PostgreSQLの $1, $2, ... に変換します。
+ * 例: "SELECT * FROM users WHERE id = ? AND name = ?"
+ *  -> "SELECT * FROM users WHERE id = $1 AND name = $2"
  */
-export async function getDb(): Promise<Database> {
-  if (db) {
-    return db;
-  }
-
-  // プロジェクトのルートディレクトリ直下に「bakery.sqlite」という名前でデータベースファイルを作ります
-  const dbPath = path.join(process.cwd(), 'bakery.sqlite');
-
-  db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-
-  return db;
+function convertSqliteToPg(sql: string): string {
+  let index = 1;
+  return sql.replace(/\?/g, () => `$${index++}`);
 }
 
 /**
- * 初回起動時などにデータベースのテーブルを作成する関数です。
- * 注文データや商品情報などを保存するための「器（テーブル）」を準備します。
+ * 既存のSQLite呼び出し（db.get, db.all, etc）を
+ * 内部でPostgreSQL(pg)に変換して実行するラッパークラス
  */
+class PgCompatibleDb {
+  
+  // 1行だけ取得するメソッド (SQLiteの db.get 互換)
+  async get(sql: string, params: any[] = []) {
+    const pgSql = convertSqliteToPg(sql);
+    const { rows } = await pool.query(pgSql, params);
+    return rows[0] || undefined;
+  }
+
+  // 全行取得するメソッド (SQLiteの db.all 互換)
+  async all(sql: string, params: any[] = []) {
+    const pgSql = convertSqliteToPg(sql);
+    const { rows } = await pool.query(pgSql, params);
+    return rows;
+  }
+
+  // 更新や挿入を行うメソッド (SQLiteの db.run 互換)
+  async run(sql: string, params: any[] = []) {
+    const pgSql = convertSqliteToPg(sql);
+    const result = await pool.query(pgSql, params);
+    // SQLite互換の戻り値をエミュレート
+    return { changes: result.rowCount, lastID: 0 }; 
+  }
+
+  // 複数行のSQLをまとめて実行するメソッド (SQLiteの db.exec 互換)
+  async exec(sql: string) {
+    // プレースホルダは使われない前提のDDL実行など
+    await pool.query(sql);
+  }
+}
+
+// シングルトンインスタンス
+const dbInstance = new PgCompatibleDb();
+
+export async function getDb() {
+  return dbInstance;
+}
+
 export async function initDb() {
   const database = await getDb();
   
-  // 注文テーブルの作成
+  // PostgreSQL用に INTEGER PRIMARY KEY AUTOINCREMENT を SERIAL PRIMARY KEY に翻訳済み
+  // DATETIME は TIMESTAMP に翻訳済み
+
   await database.exec(`
     CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       order_date TEXT NOT NULL,
       customer_name TEXT,
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  // 商品マスタ（生地ベース）テーブルの作成
-  // 商品1つに対して「どの生地を」「何グラム」使うかを定義します
   await database.exec(`
     CREATE TABLE IF NOT EXISTS product_doughs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       product_name TEXT NOT NULL,
       dough_name TEXT NOT NULL,
       dough_weight_g INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
   
-  // 日別の手動調整済み生産計画データの保存テーブル
-  // target_dateをUNIQUEにして、1日1レコードとして上書き(Set)・削除(Reset)を管理します
   await database.exec(`
     CREATE TABLE IF NOT EXISTS daily_production_plans (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       target_date TEXT UNIQUE NOT NULL,
       plan_data TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  // バッチ実行（計量チェック完了）時に消費した材料を記録するテーブル
-  // これを集計して月間の原材料使用量を算出します
   await database.exec(`
     CREATE TABLE IF NOT EXISTS ingredient_usages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       target_date TEXT NOT NULL,
       batch_id TEXT NOT NULL,
       ingredient_code TEXT NOT NULL,
       ingredient_name TEXT NOT NULL,
       used_weight_grams INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
   
-  // 今後、原価計算や副材料などのテーブルも必要に応じてここに追加していきます
-  console.log('Database initialized successfully.');
+  console.log('PostgreSQL Database initialized successfully.');
 }
