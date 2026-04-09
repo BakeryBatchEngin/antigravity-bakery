@@ -19,10 +19,10 @@ export async function GET(request: Request) {
     const MIXER_LIMIT_G = defaultMixer ? defaultMixer.max_capacity_kg * 1000 : 50000;
 
     const orderedProducts = await db.all(`
-      SELECT product_code, product_name, SUM(quantity) as total_quantity
+      SELECT product_code, MAX(product_name) as product_name, SUM(quantity) as total_quantity
       FROM orders
       WHERE order_date = ? AND product_code IS NOT NULL AND product_code != ''
-      GROUP BY product_code, product_name
+      GROUP BY product_code
     `, [date]);
 
     if (orderedProducts.length === 0) {
