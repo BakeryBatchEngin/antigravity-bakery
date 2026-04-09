@@ -3,8 +3,7 @@ import { Pool } from 'pg';
 // Supabase (PostgreSQL) 接続用のプールを作成
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // もしVercelやSupabaseの証明書関連でエラーが出る場合はsslを有効にしますが、
-  // デフォルトでURLに含まれているパラメータが効くため 일단そのままにします
+  ssl: { rejectUnauthorized: false },
 });
 
 /**
@@ -67,10 +66,13 @@ export async function initDb() {
   // DATETIME は TIMESTAMP に翻訳済み
 
   await database.exec(`
+    DROP TABLE IF EXISTS orders CASCADE;
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       order_date TEXT NOT NULL,
-      customer_name TEXT,
+      store_name TEXT,
+      delivery_shift TEXT,
+      product_code TEXT NOT NULL,
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -78,12 +80,60 @@ export async function initDb() {
   `);
 
   await database.exec(`
-    CREATE TABLE IF NOT EXISTS product_doughs (
-      id SERIAL PRIMARY KEY,
+    DROP TABLE IF EXISTS product_doughs CASCADE;
+    CREATE TABLE product_doughs (
+      product_code TEXT NOT NULL,
       product_name TEXT NOT NULL,
-      dough_name TEXT NOT NULL,
-      dough_weight_g INTEGER NOT NULL,
+      dough_code TEXT NOT NULL,
+      dough_name TEXT,
+      dough_amount INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (product_code, dough_code)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS ingredients (
+      ingredient_code TEXT PRIMARY KEY,
+      ingredient_name TEXT NOT NULL,
+      purchase_weight INTEGER,
+      purchase_price INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS doughs (
+      dough_id TEXT NOT NULL,
+      dough_name TEXT NOT NULL,
+      ingredient_code TEXT NOT NULL,
+      ingredient_name TEXT,
+      bakers_percent REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (dough_id, ingredient_code),
+      FOREIGN KEY(ingredient_code) REFERENCES ingredients(ingredient_code)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS product_ingredients (
+      product_code TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      ingredient_code TEXT NOT NULL,
+      ingredient_name TEXT,
+      ingredient_amount INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (product_code, ingredient_code),
+      FOREIGN KEY(ingredient_code) REFERENCES ingredients(ingredient_code)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS mixer_capacities (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      max_capacity_kg INTEGER NOT NULL
     );
   `);
   

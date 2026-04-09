@@ -1,9 +1,10 @@
-import 'dotenv/config'; // .env.localが存在すれば読み込む
-import { initDb } from './src/lib/db';
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 
 async function main() {
   console.log('Connecting to PostgreSQL using URL:', process.env.DATABASE_URL ? '***[HIDDEN]***' : 'NOT SET');
   try {
+    const { initDb } = await import('./src/lib/db');
     await initDb();
     console.log('✅ PostgreSQL テーブル初期化完了！');
     process.exit(0);

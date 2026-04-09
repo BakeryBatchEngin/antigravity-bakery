@@ -1,21 +1,19 @@
-import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+const { getDb } = require('./src/lib/db');
 
-export async function GET(request: Request) {
+async function testProductionRoute() {
+  const date = '2026-03-31';
   try {
-    const { searchParams } = new URL(request.url);
-    const date = searchParams.get('date');
-
-    if (!date) {
-      return NextResponse.json({ error: '日付(date)が指定されていません' }, { status: 400 });
-    }
-
     const db = await getDb();
 
+    console.log("Fetching mixers...");
     const mixers = await db.all('SELECT * FROM mixer_capacities ORDER BY max_capacity_kg DESC');
+    console.log("-> Mixers:", mixers);
     const defaultMixer = mixers.length > 0 ? mixers[0] : null;
     const MIXER_LIMIT_G = defaultMixer ? defaultMixer.max_capacity_kg * 1000 : 50000;
 
+    console.log("Fetching ordered products...");
     const orderedProducts = await db.all(`
       SELECT product_code, product_name, SUM(quantity) as total_quantity
       FROM orders
@@ -24,12 +22,11 @@ export async function GET(request: Request) {
     `, [date]);
 
     if (orderedProducts.length === 0) {
-      return NextResponse.json({ message: 'その日の注文データはありません', productionPlan: [], productMixingPlan: [] });
+      console.log('その日の注文データはありません');
+      process.exit(0);
     }
 
-    // ==========================================
-    // 1.5 手動で保存(Set)された計画データと実行済み状態の取得
-    // ==========================================
+    console.log("Fetching saved plan...");
     const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ?`, [date]);
     let savedFlatBatches = null;
     let savedFlatProductBatches = null;
@@ -46,18 +43,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // どのバッチがすでに完了（実行済み）したかのリストを取得
+    console.log("Fetching executions...");
     const executions = await db.all(`SELECT DISTINCT batch_id FROM ingredient_usages WHERE target_date = ?`, [date]);
-    const executedBatchIds = executions.map(e => e.batch_id);
+    const executedBatchIds = executions.map((e: any) => e.batch_id);
 
-    // ==========================================
-    // A. ベース生地のミキシング計画 (productionPlan)
-    // ==========================================
-    const doughRequirements: Record<string, {
-      doughCode: string;
-      doughName: string;
-      totalAmountGrams: number;
-    }> = {};
+    console.log("Building doughRequirements...");
+    const doughRequirements: any = {};
 
     for (const product of orderedProducts) {
       const doughsForProduct = await db.all(`
@@ -74,10 +65,10 @@ export async function GET(request: Request) {
             totalAmountGrams: 0,
           };
         }
-        // 製品1個あたりの必要生地量 × 注文数
         doughRequirements[pd.dough_code].totalAmountGrams += (pd.dough_amount * product.total_quantity);
       }
     }
+    console.log("-> doughRequirements:", doughRequirements);
 
     const productionPlan = [];
 
@@ -93,26 +84,22 @@ export async function GET(request: Request) {
 
       if (recipeIngredients.length === 0) continue; 
 
-      const totalBakersPercent = recipeIngredients.reduce((sum, item) => sum + item.bakers_percent, 0);
+      const totalBakersPercent = recipeIngredients.reduce((sum: number, item: any) => sum + item.bakers_percent, 0);
       
-      // 粉の割合を計算（名前から推測するか、暗黙的に100%とする。今回は仕様に合わせて100とする）
       const flourBakersPercent = 100;
       const totalFlourWeightGrams = totalAmountToMix * (flourBakersPercent / totalBakersPercent);
 
-      // 50kg制限に基づいて分割（バッチ数）
       const NumberOfBatches = Math.ceil(totalAmountToMix / MIXER_LIMIT_G);
       const batches = [];
       let remainingMass = totalAmountToMix;
 
       for (let i = 0; i < NumberOfBatches; i++) {
-        // このバッチの総重量（最大50kg）
         const batchWeight = Math.min(remainingMass, MIXER_LIMIT_G);
         remainingMass -= batchWeight;
 
-        // このバッチの粉の重量
         const batchFlourWeight = batchWeight * (flourBakersPercent / totalBakersPercent);
 
-        const ingredients = recipeIngredients.map(ing => {
+        const ingredients = recipeIngredients.map((ing: any) => {
           const requiredWeight = batchWeight * (ing.bakers_percent / totalBakersPercent);
           return {
             ingredientCode: ing.ingredient_code,
@@ -140,9 +127,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // ==========================================
-    // B. 副材料ミキシング計画 (productMixingPlan)
-    // ==========================================
+    console.log("Building productMixingPlan...");
     const productMixingPlan = [];
 
     for (const product of orderedProducts) {
@@ -160,21 +145,16 @@ export async function GET(request: Request) {
 
       if (productIngredients.length === 0 && doughsForProduct.length === 0) continue;
 
-      const totalDoughAmountPerItem = doughsForProduct.reduce((sum, d) => sum + d.dough_amount, 0);
-      const combinedDoughName = doughsForProduct.map(d => d.dough_name).join(' + ') || '生地なし';
-      const combinedDoughCode = doughsForProduct.map(d => d.dough_code).join('+') || '';
+      const totalDoughAmountPerItem = doughsForProduct.reduce((sum: number, d: any) => sum + d.dough_amount, 0);
+      const combinedDoughName = doughsForProduct.map((d: any) => d.dough_name).join(' + ') || '生地なし';
+      const combinedDoughCode = doughsForProduct.map((d: any) => d.dough_code).join('+') || '';
       
-      const totalSubIngredientsAmountPerItem = productIngredients.reduce((sum, ing) => sum + ing.ingredient_amount, 0);
+      const totalSubIngredientsAmountPerItem = productIngredients.reduce((sum: number, ing: any) => sum + ing.ingredient_amount, 0);
 
       const totalQty = product.total_quantity;
-      
-      // 【現場からのご要望: 1回分50kg制限】
-      // 生地1個分の重量 ＋ 副材料1個分の合計重量
       const weightPerItem = totalDoughAmountPerItem + totalSubIngredientsAmountPerItem;
       
-      // 50kg(50,000g) を 1個あたりの総重量で割って、1バッチに収まる最大個数を算出
       let maxBatchesQty = Math.floor(MIXER_LIMIT_G / weightPerItem);
-      // 万が一1個で50kgを超える異常値の場合は、最低1個は作れるようにする
       if (maxBatchesQty < 1) {
         maxBatchesQty = 1;
       }
@@ -184,7 +164,7 @@ export async function GET(request: Request) {
 
       let remainingQty = totalQty;
 
-      const doughDetails = doughsForProduct.map(d => ({
+      const doughDetails = doughsForProduct.map((d: any) => ({
         doughCode: d.dough_code,
         amountPerItem: d.dough_amount
       }));
@@ -193,7 +173,7 @@ export async function GET(request: Request) {
         const batchQty = Math.min(remainingQty, maxBatchesQty);
         remainingQty -= batchQty;
 
-        const batchIngredients = productIngredients.map(ing => ({
+        const batchIngredients = productIngredients.map((ing: any) => ({
           ingredientCode: ing.ingredient_code,
           ingredientName: ing.ingredient_name,
           requiredWeightGrams: Math.round(ing.ingredient_amount * batchQty)
@@ -201,7 +181,7 @@ export async function GET(request: Request) {
 
         productBatches.push({
           batchNumber: i + 1,
-          batchQuantity: batchQty, // (max = maxBatchesQty)
+          batchQuantity: batchQty,
           doughCode: combinedDoughCode,
           doughName: combinedDoughName,
           totalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty),
@@ -217,21 +197,13 @@ export async function GET(request: Request) {
         batches: productBatches
       });
     }
-
-    return NextResponse.json({
-      success: true,
-      date: date,
-      isSet: isPlanSet,
-      mixers: mixers,
-      productionPlan: isPlanSet ? [] : productionPlan, // Set済みなら空配列を返す（クライアント側で不要なパースを省くため）
-      productMixingPlan: isPlanSet ? [] : productMixingPlan,
-      savedFlatBatches: savedFlatBatches,
-      savedFlatProductBatches: savedFlatProductBatches,
-      executedBatchIds: executedBatchIds
-    });
+    
+    console.log("Success.");
 
   } catch (error) {
-    console.error('Error generating production plan:', error);
-    return NextResponse.json({ error: '仕込み表の生成に失敗しました' }, { status: 500 });
+    console.error("Test Error:", error);
   }
+  process.exit(0);
 }
+
+testProductionRoute();
