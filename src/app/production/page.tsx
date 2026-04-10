@@ -1420,7 +1420,7 @@ export default function ProductionPlanPage() {
                   {/* 詳細ヘッダー */}
                   <div className="px-6 py-5 flex items-center gap-4 bg-white">
                     <div className="bg-amber-100 text-amber-900 font-black text-xl px-4 py-2 rounded-lg border border-amber-300">
-                      {selectedBatchDetail.doughCode}
+                      {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode : selectedBatchDetail.doughCode}
                     </div>
                     <h3 className="text-3xl font-black text-slate-900 tracking-wide">
                       {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName : selectedBatchDetail.doughName}
