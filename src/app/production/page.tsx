@@ -300,13 +300,19 @@ export default function ProductionPlanPage() {
         
         // 1. 保存された計画データ（Set済み）があればそれを直接使う
         if (data.isSet && data.savedFlatBatches) {
-          setFlatBatches(data.savedFlatBatches);
+          const sortedSavedDoughs = [...data.savedFlatBatches];
+          sortedSavedDoughs.sort((a, b) => {
+            const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+            if (doughCmp !== 0) return doughCmp;
+            return a.batchNumber - b.batchNumber;
+          });
+          setFlatBatches(sortedSavedDoughs);
           
           const sortedSavedProducts = data.savedFlatProductBatches || [];
           sortedSavedProducts.sort((a, b) => {
             const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
             if (doughCmp !== 0) return doughCmp;
-            const prodCmp = a.productName.localeCompare(b.productName, 'ja');
+            const prodCmp = a.productCode.localeCompare(b.productCode, 'en');
             if (prodCmp !== 0) return prodCmp;
             return a.batchNumber - b.batchNumber;
           });
@@ -358,6 +364,11 @@ export default function ProductionPlanPage() {
             });
           });
         }
+        initialDoughBatches.sort((a, b) => {
+          const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+          if (doughCmp !== 0) return doughCmp;
+          return a.batchNumber - b.batchNumber;
+        });
         setFlatBatches(initialDoughBatches);
 
         const initialProductBatches: FlatProductBatch[] = [];
@@ -390,7 +401,7 @@ export default function ProductionPlanPage() {
         initialProductBatches.sort((a, b) => {
           const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
           if (doughCmp !== 0) return doughCmp;
-          const prodCmp = a.productName.localeCompare(b.productName, 'ja');
+          const prodCmp = a.productCode.localeCompare(b.productCode, 'en');
           if (prodCmp !== 0) return prodCmp;
           return a.batchNumber - b.batchNumber;
         });
@@ -447,12 +458,10 @@ export default function ProductionPlanPage() {
       
       targetBatches[idx] = { ...targetBatches[idx], selectedMixerId: mixerId };
       
-      const doughOrder = Array.from(new Set(prev.map(b => b.doughCode)));
       const newBatches = [...otherBatches, ...normalizeBatches(targetBatches, mixers)];
       newBatches.sort((a, b) => {
-        const idxA = doughOrder.indexOf(a.doughCode);
-        const idxB = doughOrder.indexOf(b.doughCode);
-        if (idxA !== idxB) return idxA - idxB;
+        const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+        if (doughCmp !== 0) return doughCmp;
         return a.batchNumber - b.batchNumber;
       });
       return newBatches;
@@ -476,7 +485,7 @@ export default function ProductionPlanPage() {
       newBatches.sort((a, b) => {
         const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
         if (doughCmp !== 0) return doughCmp;
-        const prodCmp = a.productName.localeCompare(b.productName, 'ja');
+        const prodCmp = a.productCode.localeCompare(b.productCode, 'en');
         if (prodCmp !== 0) return prodCmp;
         return a.batchNumber - b.batchNumber;
       });
@@ -517,12 +526,10 @@ export default function ProductionPlanPage() {
           targetBatches[idx].currentFlourWeightGrams -= remaining;
         }
       }
-      const doughOrder = Array.from(new Set(prev.map(b => b.doughCode)));
       const newBatches = [...otherBatches, ...normalizeBatches(targetBatches, mixers)];
       newBatches.sort((a, b) => {
-        const idxA = doughOrder.indexOf(a.doughCode);
-        const idxB = doughOrder.indexOf(b.doughCode);
-        if (idxA !== idxB) return idxA - idxB;
+        const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+        if (doughCmp !== 0) return doughCmp;
         return a.batchNumber - b.batchNumber;
       });
       return newBatches;
@@ -567,13 +574,11 @@ export default function ProductionPlanPage() {
       
       targetBatches.push(newBatch);
       
-      const doughOrder = Array.from(new Set(prev.map(b => b.doughCode)));
       const newBatches = [...otherBatches, ...targetBatches]; // normalizeは呼ばない
       
       newBatches.sort((a, b) => {
-        const idxA = doughOrder.indexOf(a.doughCode);
-        const idxB = doughOrder.indexOf(b.doughCode);
-        if (idxA !== idxB) return idxA - idxB;
+        const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+        if (doughCmp !== 0) return doughCmp;
         return a.batchNumber - b.batchNumber;
       });
       
@@ -614,12 +619,10 @@ export default function ProductionPlanPage() {
           targetBatches[idx].currentFlourWeightGrams -= remaining;
         }
       }
-      const doughOrder = Array.from(new Set(prev.map(b => b.doughCode)));
       const newBatches = [...otherBatches, ...normalizeBatches(targetBatches, mixers)];
       newBatches.sort((a, b) => {
-        const idxA = doughOrder.indexOf(a.doughCode);
-        const idxB = doughOrder.indexOf(b.doughCode);
-        if (idxA !== idxB) return idxA - idxB;
+        const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+        if (doughCmp !== 0) return doughCmp;
         return a.batchNumber - b.batchNumber;
       });
       return newBatches;
@@ -885,7 +888,7 @@ export default function ProductionPlanPage() {
       newBatches.sort((a, b) => {
         const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
         if (doughCmp !== 0) return doughCmp;
-        const prodCmp = a.productName.localeCompare(b.productName, 'ja');
+        const prodCmp = a.productCode.localeCompare(b.productCode, 'en');
         if (prodCmp !== 0) return prodCmp;
         return a.batchNumber - b.batchNumber;
       });
@@ -925,11 +928,9 @@ export default function ProductionPlanPage() {
         });
         
         // 順番を保持
-        const doughOrder = Array.from(new Set(prevFlatBatches.map(b => b.doughCode)));
         updatedBatches.sort((a, b) => {
-          const idxA = doughOrder.indexOf(a.doughCode);
-          const idxB = doughOrder.indexOf(b.doughCode);
-          if (idxA !== idxB) return idxA - idxB;
+          const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
+          if (doughCmp !== 0) return doughCmp;
           return a.batchNumber - b.batchNumber;
         });
         
