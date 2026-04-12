@@ -18,12 +18,33 @@ export async function GET(request: Request) {
     const defaultMixer = mixers.length > 0 ? mixers[0] : null;
     const MIXER_LIMIT_G = defaultMixer ? defaultMixer.max_capacity_kg * 1000 : 50000;
 
-    const orderedProducts = await db.all(`
-      SELECT product_code, MAX(product_name) as product_name, SUM(quantity) as total_quantity
+    const orderedProductsRaw = await db.all(`
+      SELECT product_code, MAX(product_name) as order_product_name, SUM(quantity) as total_quantity
       FROM orders
       WHERE order_date = ? AND product_code IS NOT NULL AND product_code != ''
       GROUP BY product_code
     `, [date]);
+
+    // 最新のマスタ商品名を取得
+    const masterProductNames = await db.all(`
+      SELECT product_code, MAX(product_name) as master_product_name
+      FROM (
+        SELECT product_code, product_name FROM product_doughs
+        UNION ALL
+        SELECT product_code, product_name FROM product_ingredients
+      )
+      GROUP BY product_code
+    `);
+    const masterNameMap: Record<string, string> = {};
+    masterProductNames.forEach((row: any) => {
+      masterNameMap[row.product_code] = row.master_product_name;
+    });
+
+    const orderedProducts = orderedProductsRaw.map((p: any) => ({
+      product_code: p.product_code,
+      product_name: masterNameMap[p.product_code] || p.order_product_name,
+      total_quantity: p.total_quantity
+    }));
 
     if (orderedProducts.length === 0) {
       return NextResponse.json({ message: 'その日の注文データはありません', productionPlan: [], productMixingPlan: [] });
@@ -94,6 +115,8 @@ export async function GET(request: Request) {
       `, [doughCode]);
 
       if (recipeIngredients.length === 0) continue; 
+      
+      const latestDoughName = recipeIngredients[0].dough_name || req.doughName;
 
       const totalBakersPercent = recipeIngredients.reduce((sum, item) => sum + item.bakers_percent, 0);
       
@@ -134,7 +157,7 @@ export async function GET(request: Request) {
 
       productionPlan.push({
         doughCode: req.doughCode,
-        doughName: req.doughName,
+        doughName: latestDoughName,
         totalRequiredGrams: Math.round(totalAmountToMix),
         totalFlourWeightGrams: Math.round(totalFlourWeightGrams),
         totalBakersPercent: totalBakersPercent,
@@ -162,8 +185,15 @@ export async function GET(request: Request) {
 
       if (productIngredients.length === 0 && doughsForProduct.length === 0) continue;
 
+      // 最新の生地名称をマスターから確実に取得して連結
+      const latestDoughNames = [];
+      for (const d of doughsForProduct) {
+        const masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+        latestDoughNames.push(masterDough ? masterDough.dough_name : d.dough_name);
+      }
+      
       const totalDoughAmountPerItem = doughsForProduct.reduce((sum, d) => sum + d.dough_amount, 0);
-      const combinedDoughName = doughsForProduct.map(d => d.dough_name).join(' + ') || '生地なし';
+      const combinedDoughName = latestDoughNames.join(' + ') || '生地なし';
       const combinedDoughCode = doughsForProduct.map(d => d.dough_code).join('+') || '';
       
       const totalSubIngredientsAmountPerItem = productIngredients.reduce((sum, ing) => sum + ing.ingredient_amount, 0);

@@ -66,6 +66,13 @@ export async function POST(request: Request) {
         `, [dough_id, dough_name, ing.ingredient_code, nameToInsert, ing.bakers_percent]);
       }
       
+      // 他のテーブル（商品マスタ）に保存されている生地名も連動して更新する
+      await db.run(`
+        UPDATE product_doughs
+        SET dough_name = ?
+        WHERE dough_code = ?
+      `, [dough_name, dough_id]);
+
       await db.run('COMMIT');
       return NextResponse.json({ success: true });
     } catch (txError) {

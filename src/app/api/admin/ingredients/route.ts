@@ -21,16 +21,28 @@ export async function POST(request: Request) {
     }
 
     const db = await getDb();
-    await db.run(`
-      INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(ingredient_code) DO UPDATE SET
-        ingredient_name = excluded.ingredient_name,
-        purchase_weight = excluded.purchase_weight,
-        purchase_price = excluded.purchase_price
-    `, [ingredient_code, ingredient_name, purchase_weight || null, purchase_price || null]);
+    
+    await db.run('BEGIN TRANSACTION');
+    try {
+      await db.run(`
+        INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(ingredient_code) DO UPDATE SET
+          ingredient_name = excluded.ingredient_name,
+          purchase_weight = excluded.purchase_weight,
+          purchase_price = excluded.purchase_price
+      `, [ingredient_code, ingredient_name, purchase_weight || null, purchase_price || null]);
 
-    return NextResponse.json({ success: true });
+      // 副材料マスタの名前が変更された場合、関連テーブルも更新する
+      await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
+      await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
+      
+      await db.run('COMMIT');
+      return NextResponse.json({ success: true });
+    } catch (e) {
+      await db.run('ROLLBACK');
+      throw e;
+    }
   } catch (error) {
     console.error('Failed to save ingredient:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました' }, { status: 500 });

@@ -113,12 +113,12 @@ const normalizeBatches = (batches: FlatBatch[], mixers: MixerCapacity[]): FlatBa
   let current = [...batches];
   const baseBatch = current[0];
   
-  while (current.length > 1) {
+  while (current.length > 0) {
     const lastIdx = current.length - 1;
     if (current[lastIdx].currentFlourWeightGrams <= 0) {
       const excess = current[lastIdx].currentFlourWeightGrams;
       current.pop();
-      if (excess < 0) {
+      if (excess < 0 && current.length > 0) {
         current[current.length - 1].currentFlourWeightGrams += excess;
       }
     } else {
@@ -163,12 +163,12 @@ const normalizeProductBatches = (batches: FlatProductBatch[], mixers: MixerCapac
   const baseTotalIngWeightGrams = baseBatch.baseIngredients.reduce((sum, ing) => sum + ing.requiredWeightGrams, 0);
   const baseItemTotalWeightGrams = (baseBatch.originalTotalDoughWeightGrams + baseTotalIngWeightGrams) / safeOriginalQty;
 
-  while (current.length > 1) {
+  while (current.length > 0) {
     const lastIdx = current.length - 1;
     if (current[lastIdx].currentBatchQuantity <= 0) {
       const excess = current[lastIdx].currentBatchQuantity;
       current.pop();
-      if (excess < 0) {
+      if (excess < 0 && current.length > 0) {
         current[current.length - 1].currentBatchQuantity += excess;
       }
     } else {
@@ -682,6 +682,78 @@ export default function ProductionPlanPage() {
     }
   };
 
+  // 全一括実行（All done）ボタン
+  const handleAllDone = async () => {
+    if (!targetDate) return;
+    if (!confirm('本日のすべてのバッチを一括で「実行済み」にしますか？\n(既に個別チェックされているものも含まれます)')) return;
+
+    const exportBatches: { batchId: string, ingredients: any[] }[] = [];
+    const newExecutedIds: string[] = [];
+    const newCheckedState: Record<string, Record<string, boolean>> = { ...checkedIngredients };
+
+    // 生地バッチの計算
+    flatBatches.forEach(batch => {
+      const flourBakersPercent = 100;
+      const ingredients = batch.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent))
+      }));
+      exportBatches.push({ batchId: batch.id, ingredients });
+      newExecutedIds.push(batch.id);
+      
+      const checks: Record<string, boolean> = {};
+      batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      newCheckedState[batch.id] = checks;
+    });
+
+    // 商品バッチの計算
+    flatProductBatches.forEach(batch => {
+      const safeOriginalQty = batch.originalBatchQuantity || 1;
+      const ingredients = batch.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity)
+      }));
+      exportBatches.push({ batchId: batch.id, ingredients });
+      newExecutedIds.push(batch.id);
+
+      const checks: Record<string, boolean> = {};
+      batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      newCheckedState[batch.id] = checks;
+    });
+
+    try {
+      const res = await fetch('/api/production/execute/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: targetDate,
+          batches: exportBatches
+        })
+      });
+      if (res.ok) {
+        setExecutedBatchIds(Array.from(new Set([...executedBatchIds, ...newExecutedIds])));
+        setCheckedIngredients(newCheckedState);
+      } else {
+         alert('一括実行に失敗しました。');
+      }
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    }
+  };
+
+  // Excel出力ボタン
+  const handleExportExcel = () => {
+    if (!targetDate) return;
+    if (!isPlanSet) {
+      alert('Excelを出力するには、先に「Set」ボタンで本日の計画を確定してください。');
+      return;
+    }
+    // 別タブで開いてダウンロードさせる
+    window.open(`/api/production/export?date=${targetDate}`, '_blank');
+  };
+
   const toggleAllChecks = async (batchId: string, isCurrentlyAllChecked: boolean) => {
     let batch: FlatBatch | FlatProductBatch | undefined = flatBatches.find(b => b.id === batchId);
     let isProduct = false;
@@ -1042,6 +1114,29 @@ export default function ProductionPlanPage() {
               title="計画をリセットし、注文データから再計算します"
             >
               🔄 Reset
+            </button>
+          </div>
+
+          {/* 新規追加：一括実行 / Excel出力 */}
+          <div className="flex items-center gap-2 mr-2 border-r border-slate-300 dark:border-slate-600 pr-4">
+            <button 
+              onClick={handleAllDone}
+              className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2 transform active:scale-95"
+              title="表示されているすべてのバッチを一括で実行済み（チェック完了）にします"
+            >
+              ✅ All done
+            </button>
+            <button 
+              disabled={!isPlanSet}
+              onClick={handleExportExcel}
+              className={`px-3 py-2 font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all ${
+                isPlanSet 
+                  ? "bg-blue-500 hover:bg-blue-600 text-white cursor-pointer transform active:scale-95" 
+                  : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed opacity-60"
+              }`}
+              title={isPlanSet ? "この内容で詳細エクセルを出力します" : "エクセルを出力するには、先に「Set」して確定してください"}
+            >
+              📊 Excel出力
             </button>
           </div>
 
