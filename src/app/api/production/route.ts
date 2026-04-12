@@ -143,14 +143,14 @@ export async function GET(request: Request) {
             ingredientCode: ing.ingredient_code,
             ingredientName: ing.ingredient_name,
             bakersPercent: ing.bakers_percent,
-            requiredWeightGrams: Math.round(requiredWeight)
+            requiredWeightGrams: Math.round(requiredWeight * 10) / 10
           };
         });
 
         batches.push({
           batchNumber: i + 1,
-          batchFlourWeightGrams: Math.round(batchFlourWeight),
-          batchTotalWeightGrams: Math.round(batchWeight),
+          batchFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
+          batchTotalWeightGrams: Math.round(batchWeight * 10) / 10,
           ingredients: ingredients
         });
       }
@@ -158,8 +158,8 @@ export async function GET(request: Request) {
       productionPlan.push({
         doughCode: req.doughCode,
         doughName: latestDoughName,
-        totalRequiredGrams: Math.round(totalAmountToMix),
-        totalFlourWeightGrams: Math.round(totalFlourWeightGrams),
+        totalRequiredGrams: Math.round(totalAmountToMix * 10) / 10,
+        totalFlourWeightGrams: Math.round(totalFlourWeightGrams * 10) / 10,
         totalBakersPercent: totalBakersPercent,
         batches: batches
       });
@@ -228,7 +228,7 @@ export async function GET(request: Request) {
         const batchIngredients = productIngredients.map(ing => ({
           ingredientCode: ing.ingredient_code,
           ingredientName: ing.ingredient_name,
-          requiredWeightGrams: Math.round(ing.ingredient_amount * batchQty)
+          requiredWeightGrams: Math.round(ing.ingredient_amount * batchQty * 10) / 10
         }));
 
         productBatches.push({
@@ -236,7 +236,7 @@ export async function GET(request: Request) {
           batchQuantity: batchQty, // (max = maxBatchesQty)
           doughCode: combinedDoughCode,
           doughName: combinedDoughName,
-          totalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty),
+          totalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty * 10) / 10,
           ingredients: batchIngredients,
           doughDetails: doughDetails
         });

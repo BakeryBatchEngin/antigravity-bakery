@@ -87,13 +87,14 @@ export async function GET(request: Request) {
           const ing = batch.baseIngredients[idx];
           const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / 100);
           
+          const reqW = Math.round(requiredWeight * 10) / 10;
           const row = sheet1.addRow([
             ing.ingredientName,
             `${ing.bakersPercent}%`,
-            Math.round(requiredWeight)
+            reqW
           ]);
           
-          row.getCell(3).numFmt = '#,##0" g"';
+          row.getCell(3).numFmt = '#,##0.##" g"';
           
           // Styling
           const isOdd = idx % 2 === 1;
@@ -130,7 +131,7 @@ export async function GET(request: Request) {
       const safeOriginalQty = batch.originalBatchQuantity || 1;
       const originalTotalDough = batch.originalTotalDoughWeightGrams || 0;
       const doughPerItem = originalTotalDough / safeOriginalQty;
-      const currentDoughWeight = Math.round(doughPerItem * currentQty);
+      const currentDoughWeight = Math.round(doughPerItem * currentQty * 10) / 10;
 
       // バッチタイトル行
       const batchTitleRow = sheet2.addRow([
@@ -166,7 +167,7 @@ export async function GET(request: Request) {
       if (batch.doughName && currentDoughWeight > 0) {
          const dRow = sheet2.addRow([ `${batch.doughName} (生地)`, '', currentDoughWeight ]);
          dRow.getCell(1).font = { bold: true, color: { argb: 'FFB45309' } }; // Amber 700
-         dRow.getCell(3).numFmt = '#,##0" g"';
+         dRow.getCell(3).numFmt = '#,##0.##" g"';
          dRow.getCell(3).alignment = { horizontal: 'center' };
          dRow.getCell(3).font = { bold: true, size: 12, color: { argb: 'FFB45309' } };
          for (let c = 1; c <= 4; c++) {
@@ -179,7 +180,7 @@ export async function GET(request: Request) {
       if (batch.baseIngredients && Array.isArray(batch.baseIngredients)) {
         for (const ing of batch.baseIngredients) {
           const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
-          const reqWeight = Math.round(perItemWeight * currentQty);
+          const reqWeight = Math.round(perItemWeight * currentQty * 10) / 10;
           
           const row = sheet2.addRow([
             ing.ingredientName,
@@ -187,7 +188,7 @@ export async function GET(request: Request) {
             reqWeight
           ]);
           
-          row.getCell(3).numFmt = '#,##0" g"';
+          row.getCell(3).numFmt = '#,##0.##" g"';
           
           // Styling
           const isOdd = lineIdx % 2 === 1;

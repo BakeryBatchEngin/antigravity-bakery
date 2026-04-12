@@ -697,7 +697,7 @@ export default function ProductionPlanPage() {
       const ingredients = batch.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent))
+        requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 10) / 10
       }));
       exportBatches.push({ batchId: batch.id, ingredients });
       newExecutedIds.push(batch.id);
@@ -713,7 +713,7 @@ export default function ProductionPlanPage() {
       const ingredients = batch.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity)
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 10) / 10
       }));
       exportBatches.push({ batchId: batch.id, ingredients });
       newExecutedIds.push(batch.id);
@@ -777,14 +777,14 @@ export default function ProductionPlanPage() {
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty)
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty * 10) / 10
       }));
     } else {
       const b = batch as FlatBatch;
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round(currTotalFlour * (ing.bakersPercent / 100))
+        requiredWeightGrams: Math.round(currTotalFlour * (ing.bakersPercent / 100) * 10) / 10
       }));
     }
 
@@ -870,7 +870,7 @@ export default function ProductionPlanPage() {
         return {
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(perItemWeight * currentQty)
+          requiredWeightGrams: Math.round(perItemWeight * currentQty * 10) / 10
         };
       });
     } else {
@@ -880,7 +880,7 @@ export default function ProductionPlanPage() {
         return {
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(requiredWeight)
+          requiredWeightGrams: Math.round(requiredWeight * 10) / 10
         };
       });
     }
@@ -1029,12 +1029,12 @@ export default function ProductionPlanPage() {
         const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
         return {
           ...ing,
-          requiredWeightGrams: Math.round(perItemWeight * currentQty)
+          requiredWeightGrams: Math.round(perItemWeight * currentQty * 10) / 10
         };
       });
 
       const perItemDoughWeight = batchInfo.originalTotalDoughWeightGrams / safeOriginalQty;
-      const currentTotalDoughWeightGrams = Math.round(perItemDoughWeight * currentQty);
+      const currentTotalDoughWeightGrams = Math.round(perItemDoughWeight * currentQty * 10) / 10;
 
       return {
         ...batchInfo,
@@ -1056,7 +1056,7 @@ export default function ProductionPlanPage() {
         const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent);
         return {
           ...ing,
-          requiredWeightGrams: Math.round(requiredWeight)
+          requiredWeightGrams: Math.round(requiredWeight * 10) / 10
         };
       });
 
@@ -1078,11 +1078,17 @@ export default function ProductionPlanPage() {
     return (g / 1000).toFixed(0); // リスト用は小数点除外(デザイン合わせ)
   };
   
+  // 小数第1位まで表示。小数部分がない場合は整数のみ表示（例: 100.0g → 100g, 15.3g → 15.3g）
+  const fmtG = (g: number) => {
+    const rounded = Math.round(g * 10) / 10;
+    return Number.isInteger(rounded) ? rounded.toLocaleString() : rounded.toLocaleString('ja-JP', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  };
+
   const formatDetailWeight = (g: number) => {
     if (g >= 1000) {
       return `${(g / 1000).toFixed(2)}`;
     }
-    return `${g}`; // gの場合はそのまま
+    return fmtG(g);
   };
 
   return (
@@ -1537,14 +1543,14 @@ export default function ProductionPlanPage() {
                           <div className="text-center">
                             <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">粉量</div>
                             <div className="text-2xl font-black text-slate-700">
-                              {Math.round(selectedBatchDetail.currentFlourWeightGrams).toLocaleString()} <span className="text-xl text-slate-400">g</span>
+                              {fmtG(selectedBatchDetail.currentFlourWeightGrams)} <span className="text-xl text-slate-400">g</span>
                             </div>
                           </div>
                           <div className="text-slate-300 font-light text-2xl">/</div>
                           <div className="text-center">
                             <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">総生地量目安</div>
                             <div className="text-3xl font-black text-amber-500">
-                              {Math.round(selectedBatchDetail.currentTotalWeightGrams).toLocaleString()} <span className="text-2xl text-amber-500/80">g</span>
+                              {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
                             </div>
                           </div>
                         </>
@@ -1560,7 +1566,7 @@ export default function ProductionPlanPage() {
                           <div className="text-center">
                             <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">使用生地量目安</div>
                             <div className="text-3xl font-black text-amber-500">
-                              {Math.round(selectedBatchDetail.currentTotalDoughWeightGrams).toLocaleString()} <span className="text-2xl text-amber-500/80">g</span>
+                              {fmtG(selectedBatchDetail.currentTotalDoughWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
                             </div>
                           </div>
                         </>
@@ -1609,7 +1615,7 @@ export default function ProductionPlanPage() {
                             </td>
                             <td className="py-5 px-6 text-right">
                               <span className="text-4xl sm:text-5xl font-black font-mono tracking-tighter text-amber-500">
-                                {Math.round(selectedBatchDetail.currentTotalDoughWeightGrams).toLocaleString()}
+                                {fmtG(selectedBatchDetail.currentTotalDoughWeightGrams)}
                               </span>
                               <span className="text-xl sm:text-2xl ml-2 font-bold text-slate-400">
                                 g
@@ -1643,7 +1649,7 @@ export default function ProductionPlanPage() {
                               )}
                               <td className="py-5 px-6 text-right">
                                 <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tighter transition-colors ${isChecked ? 'text-slate-400' : 'text-amber-500 group-hover:text-amber-400'}`}>
-                                  {Math.round(ing.requiredWeightGrams).toLocaleString()}
+                                  {fmtG(ing.requiredWeightGrams)}
                                 </span>
                                 <span className={`text-xl sm:text-2xl ml-2 font-bold ${isChecked ? 'text-slate-400' : 'text-slate-400'}`}>
                                   g

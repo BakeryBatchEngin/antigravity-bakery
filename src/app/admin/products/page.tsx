@@ -149,7 +149,7 @@ export default function ProductsMasterPage() {
     const hasEmptyD = formData.doughs.some(d => !d.dough_code || d.dough_amount <= 0);
     const hasEmptyI = formData.ingredients.some(i => !i.ingredient_code || i.ingredient_amount <= 0);
     if (hasEmptyD || hasEmptyI) {
-      setErrorMsg('コードの未選択、またはグラム数が0以下の項目があります');
+      setErrorMsg('コードの未選択、またはグラム数が0以下の項目があります（0.1g以上の値を入力してください）');
       return;
     }
     
@@ -283,9 +283,10 @@ export default function ProductsMasterPage() {
                         ))}
                       </select>
                       <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-blue-500 bg-white">
-                        <input 
+                         <input 
                           type="number"
-                          min="1"
+                          min="0.1"
+                          step="0.1"
                           value={d.dough_amount || ''}
                           onChange={(e) => updateDoughRow(idx, 'dough_amount', Number(e.target.value))}
                           className="w-full py-2 text-slate-900 outline-none text-right placeholder-slate-400"
@@ -332,7 +333,8 @@ export default function ProductsMasterPage() {
                       <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-green-500 bg-white">
                         <input 
                           type="number"
-                          min="1"
+                          min="0.1"
+                          step="0.1"
                           value={ing.ingredient_amount || ''}
                           onChange={(e) => updateIngredientRow(idx, 'ingredient_amount', Number(e.target.value))}
                           className="w-full py-2 text-slate-900 outline-none text-right placeholder-slate-400"

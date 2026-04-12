@@ -18,7 +18,7 @@ export async function POST(request: Request) {
           await db.run(`
               INSERT INTO ingredient_usages (target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
               VALUES (?, ?, ?, ?, ?)
-          `, [date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams)]);
+          `, [date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
       }
       await db.run('COMMIT');
     } catch(err) {

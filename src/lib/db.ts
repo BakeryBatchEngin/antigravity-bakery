@@ -86,7 +86,7 @@ export async function initDb() {
       product_name TEXT NOT NULL,
       dough_code TEXT NOT NULL,
       dough_name TEXT,
-      dough_amount INTEGER NOT NULL,
+      dough_amount REAL NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (product_code, dough_code)
     );
@@ -121,7 +121,7 @@ export async function initDb() {
       product_name TEXT NOT NULL,
       ingredient_code TEXT NOT NULL,
       ingredient_name TEXT,
-      ingredient_amount INTEGER NOT NULL,
+      ingredient_amount REAL NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (product_code, ingredient_code),
       FOREIGN KEY(ingredient_code) REFERENCES ingredients(ingredient_code)
@@ -154,7 +154,7 @@ export async function initDb() {
       batch_id TEXT NOT NULL,
       ingredient_code TEXT NOT NULL,
       ingredient_name TEXT NOT NULL,
-      used_weight_grams INTEGER NOT NULL,
+      used_weight_grams REAL NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
