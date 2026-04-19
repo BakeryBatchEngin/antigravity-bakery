@@ -48,16 +48,17 @@ export default function OrderImportPage() {
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1 });
+      const merges = ws['!merges'] || [];
       
       setDataPreview(data);
-      extractOrders(data, wsname);
+      extractOrders(data, wsname, merges);
       setIsProcessing(false);
     };
     reader.readAsBinaryString(file);
   };
 
   // Excelの2次元配列データから、必要な注文データを抽出する関数
-  const extractOrders = (data: any[][], sheetName: string) => {
+  const extractOrders = (data: any[][], sheetName: string, merges: any[] = []) => {
     if (!data || data.length < 3) return;
     setImportErrors([]);
 
@@ -112,11 +113,27 @@ export default function OrderImportPage() {
 
     // 各列のインデックス → { customer_name, dept_name, display_name } のマップを作成
     const vendorCols: { colIndex: number; customerName: string; deptName: string; displayName: string }[] = [];
+
     for (let colIdx = 6; colIdx < totalAmountColIndex; colIdx++) {
-      const customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
-      if (!customerName) continue; // 会社名が空の列はスキップ
+      let customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
+      
+      // もしセルの値がない場合、このセルがExcel上で「結合（マージ）されている」ことによる空白か判定する
+      if (!customerName && merges.length > 0) {
+        // 現在見ているセルの座標 (行: headerRowIndex, 列: colIdx)
+        for (const merge of merges) {
+          const { s, e } = merge; // s: start, e: end
+          if (headerRowIndex >= s.r && headerRowIndex <= e.r && colIdx >= s.c && colIdx <= e.c) {
+            // マージ範囲内に含まれている場合、親セル（範囲の左上 = s.r, s.c）の値を引き継ぐ
+            customerName = data[s.r] && data[s.r][s.c] ? String(data[s.r][s.c]).trim() : '';
+            break;
+          }
+        }
+      }
+
+      if (!customerName) continue; // マージもなく本当に空白の列（レイアウト用など）は無視する
+
       const deptName = vendorSubRow[colIdx] ? String(vendorSubRow[colIdx]).trim() : '';
-      const displayName = customerName + deptName; // 例: "日本橋高島屋" + "1便" → "日本橋高島屋1便"
+      const displayName = customerName + (deptName ? ` ${deptName}` : ''); // 便名がある場合は見やすく「高島屋 1便」のように空白を空ける
       vendorCols.push({ colIndex: colIdx, customerName, deptName, displayName });
     }
 
