@@ -275,12 +275,44 @@ export default function ProductionPlanPage() {
   // 計量完了のチェック状態管理: { [batchId]: { [ingredientCode]: true/false } }
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, Record<string, boolean>>>({});
 
+  // 発注元内訳表示用のモーダル状態
+  const [breakdownModal, setBreakdownModal] = useState<{
+    isOpen: boolean;
+    productCode: string;
+    productName: string;
+    items: { display_name: string; quantity: number }[];
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    productCode: '',
+    productName: '',
+    items: [],
+    isLoading: false,
+  });
+
   // 初回レンダリング時に今日の日付をセットし、データをフェッチ
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setTargetDate(today);
     fetchProductionPlan(today);
   }, []);
+
+  // 発注元内訳を取得してモーダルを開くハンドラ
+  const handleShowBreakdown = async (e: React.MouseEvent, productCode: string, productName: string) => {
+    e.stopPropagation(); // バッチ選択への会気を防ぐ
+    setBreakdownModal({ isOpen: true, productCode, productName, items: [], isLoading: true });
+    try {
+      const res = await fetch(`/api/order-breakdowns?date=${targetDate}&product_code=${encodeURIComponent(productCode)}`);
+      const data = await res.json();
+      if (res.ok && data.breakdowns) {
+        setBreakdownModal(prev => ({ ...prev, items: data.breakdowns, isLoading: false }));
+      } else {
+        setBreakdownModal(prev => ({ ...prev, items: [], isLoading: false }));
+      }
+    } catch {
+      setBreakdownModal(prev => ({ ...prev, items: [], isLoading: false }));
+    }
+  };
 
   const fetchProductionPlan = async (date: string) => {
     if (!date) return;
@@ -1436,11 +1468,19 @@ export default function ProductionPlanPage() {
                         )}
                         {/* 上部: 品名情報とミキサー選択 */}
                         <div className="flex flex-col gap-2 mb-3">
-                          <div className="flex gap-2 items-center">
-                            <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${isSelected ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                          <div className="flex gap-2 items-center flex-1 min-w-0">
+                            <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded flex-shrink-0 ${isSelected ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
                               {batch.productCode}
                             </span>
-                            <span className="font-bold truncate text-lg">{batch.productName}</span>
+                            <span className="font-bold truncate text-lg flex-1">{batch.productName}</span>
+                            {/* 発注元内訳表示ボタン */}
+                            <button
+                              onClick={(e) => handleShowBreakdown(e, batch.productCode, batch.productName)}
+                              className="flex-shrink-0 px-2 py-0.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-900/40 dark:hover:bg-indigo-800/60 dark:text-indigo-300 text-xs font-bold rounded-full border border-indigo-200 dark:border-indigo-700 transition-colors whitespace-nowrap"
+                              title="発注元ごとの注文内訳を表示"
+                            >
+                              📋 内訳
+                            </button>
                           </div>
                           <div className="flex gap-2 mt-1">
                             {mixers.map(m => (
@@ -1512,6 +1552,75 @@ export default function ProductionPlanPage() {
                 </div>
               )}
             </div>
+
+            {/* 発注元内訳モーダル */}
+            {breakdownModal.isOpen && (
+              <div
+                className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+                onClick={() => setBreakdownModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                <div
+                  className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-700 overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* モーダルヘッダー */}
+                  <div className="bg-indigo-600 text-white px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold opacity-80 tracking-wider mb-0.5">{breakdownModal.productCode}</div>
+                      <h3 className="text-xl font-black">📋 {breakdownModal.productName}</h3>
+                    </div>
+                    <button
+                      onClick={() => setBreakdownModal(prev => ({ ...prev, isOpen: false }))}
+                      className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-colors font-bold text-lg"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {/* モーダルボディ */}
+                  <div className="p-6">
+                    {breakdownModal.isLoading ? (
+                      <div className="flex items-center justify-center py-8 gap-3">
+                        <div className="animate-spin text-3xl">🔄</div>
+                        <span className="text-slate-500 font-bold">読み込み中...</span>
+                      </div>
+                    ) : breakdownModal.items.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="text-4xl mb-3">💭</div>
+                        <p className="text-slate-500 font-bold">内訳データがありません</p>
+                        <p className="text-sm text-slate-400 mt-2">
+                          発注元内訳は、Excelインポート時にG列以降に発注元別数量が記載されている場合に表示されます。
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">発注元内訳</p>
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                          {breakdownModal.items.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-700"
+                            >
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{item.display_name}</span>
+                              <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                                {item.quantity}<span className="text-sm font-bold ml-1 text-slate-500">個</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {/* 合計行 */}
+                        <div className="mt-3 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 rounded-xl px-4 py-3 border border-indigo-100 dark:border-indigo-800">
+                          <span className="font-black text-indigo-700 dark:text-indigo-300">📦 合計</span>
+                          <span className="text-2xl font-black text-indigo-700 dark:text-indigo-300">
+                            {breakdownModal.items.reduce((s, i) => s + i.quantity, 0)}<span className="text-sm font-bold ml-1">個</span>
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 右ペイン：詳細表示 (黄色の枠線のデザイン) */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center items-start">

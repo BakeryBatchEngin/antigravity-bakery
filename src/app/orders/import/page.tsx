@@ -14,11 +14,23 @@ interface OrderItem {
   orderDate: string;    // YYYY-MM-DD形式の注文対象日
 }
 
+// 発注元ごとの内訳データ構造
+interface OrderBreakdownItem {
+  order_date: string;    // YYYY-MM-DD形式の注文対象日
+  product_code: string;  // 商品コード
+  customer_name: string; // 発注元会社名（例: 日本橋高島屋）
+  dept_name: string;     // 便・部署名（例: 1便、空の場合は ''）
+  display_name: string;  // 表示名（例: 日本橋高島屋1便）
+  quantity: number;      // 発注数
+}
+
 export default function OrderImportPage() {
   const [dataPreview, setDataPreview] = useState<any[][]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedOrders, setParsedOrders] = useState<OrderItem[]>([]);
+  // 発注元内訳データ（仕込みページの内訳表示用）
+  const [parsedBreakdowns, setParsedBreakdowns] = useState<OrderBreakdownItem[]>([]);
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
 
@@ -90,7 +102,23 @@ export default function OrderImportPage() {
     }
 
     const extracted: OrderItem[] = [];
+    const extractedBreakdowns: OrderBreakdownItem[] = [];
     const errors: string[] = [];
+
+    // ─── 発注元ヘッダーの解析（G列 = index 6 から total_amount の1つ前まで） ───
+    // headerRow（2行目）: 発注元会社名
+    // headerRow+1（3行目）: 便・部署名（空白の場合もある）
+    const vendorSubRow = data[headerRowIndex + 1] || [];
+
+    // 各列のインデックス → { customer_name, dept_name, display_name } のマップを作成
+    const vendorCols: { colIndex: number; customerName: string; deptName: string; displayName: string }[] = [];
+    for (let colIdx = 6; colIdx < totalAmountColIndex; colIdx++) {
+      const customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
+      if (!customerName) continue; // 会社名が空の列はスキップ
+      const deptName = vendorSubRow[colIdx] ? String(vendorSubRow[colIdx]).trim() : '';
+      const displayName = customerName + deptName; // 例: "日本橋高島屋" + "1便" → "日本橋高島屋1便"
+      vendorCols.push({ colIndex: colIdx, customerName, deptName, displayName });
+    }
 
     // データ行はヘッダーから2行下から
     for (let rowIndex = headerRowIndex + 2; rowIndex < data.length; rowIndex++) {
@@ -135,22 +163,44 @@ export default function OrderImportPage() {
            continue;
         }
 
+        const pKeyStr = String(productKey).trim();
+
+        // 合計行を extracted に追加（既存動作と変わらず）
         extracted.push({
           customerName: '全体合計',
           deliveryShift: '',
-          productKey: String(productKey).trim(),
+          productKey: pKeyStr,
           productName: productName ? String(productName).replace(/\r\n/g, '') : '',
           quantity: amt,
           orderDate: orderDate
         });
+
+        // ─── 発注元ごとの内訳を抽出（新機能） ───
+        for (const vc of vendorCols) {
+          const rawQty = row[vc.colIndex];
+          if (rawQty === undefined || rawQty === null || String(rawQty).trim() === '') continue;
+          const qty = Number(rawQty);
+          if (isNaN(qty) || qty <= 0) continue; // 0個以下はスキップ
+
+          extractedBreakdowns.push({
+            order_date: orderDate,
+            product_code: pKeyStr,
+            customer_name: vc.customerName,
+            dept_name: vc.deptName,
+            display_name: vc.displayName,
+            quantity: qty,
+          });
+        }
       }
     }
 
     if (errors.length > 0) {
       setImportErrors(errors);
-      setParsedOrders([]); // エラー時は保存させないためデータを空に
+      setParsedOrders([]);      // エラー時は保存させないためデータを空に
+      setParsedBreakdowns([]);
     } else {
       setParsedOrders(extracted);
+      setParsedBreakdowns(extractedBreakdowns);
     }
   };
 
@@ -192,6 +242,7 @@ export default function OrderImportPage() {
       setIsProcessing(true);
       setShowConflictModal(false);
       
+      // ── 既存: 合計数を orders テーブルに保存（変更なし）──
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,14 +251,29 @@ export default function OrderImportPage() {
       
       const result = await response.json();
       
-      if (response.ok) {
-        alert(`成功: ${result.message}`);
-        setParsedOrders([]); // 成功したらクリア
-        setFileName('');
-        setDataPreview([]);
-      } else {
+      if (!response.ok) {
         alert(`エラー: ${result.error}`);
+        return;
       }
+
+      // ── 新機能: 発注元内訳を order_breakdowns テーブルに保存 ──
+      if (parsedBreakdowns.length > 0) {
+        const bdRes = await fetch('/api/order-breakdowns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ breakdowns: parsedBreakdowns, mode }),
+        });
+        if (!bdRes.ok) {
+          // 内訳保存は補助機能なので警告だけ表示して続行
+          console.warn('内訳データの保存に失敗しました（合計データは保存済みです）');
+        }
+      }
+
+      alert(`成功: ${result.message}`);
+      setParsedOrders([]);      // 成功したらクリア
+      setParsedBreakdowns([]);
+      setFileName('');
+      setDataPreview([]);
     } catch (error) {
       alert('通信エラーが発生しました');
       console.error(error);

@@ -159,5 +159,19 @@ export async function initDb() {
     );
   `);
   
+  // 発注元ごとの内訳データを格納するテーブル（既存データを壊さないようDROPなし）
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS order_breakdowns (
+      id            SERIAL PRIMARY KEY,
+      order_date    TEXT NOT NULL,
+      product_code  TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      dept_name     TEXT NOT NULL,
+      display_name  TEXT NOT NULL,
+      quantity      INTEGER NOT NULL,
+      created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log('PostgreSQL Database initialized successfully.');
 }
