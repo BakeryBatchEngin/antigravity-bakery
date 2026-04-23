@@ -372,6 +372,7 @@ export default function ProductionPlanPage() {
         }
 
         // 2. 保存されていない場合は、注文からの新規計算データを使用
+        setCheckedIngredients({}); // <--- 日付を変えた際など、前のチェック状態が残るのを防ぐためリセット
         let firstBatchId: string | null = null;
         
         const initialDoughBatches: FlatBatch[] = [];

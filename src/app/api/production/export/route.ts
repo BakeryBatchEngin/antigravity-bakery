@@ -26,6 +26,33 @@ export async function GET(request: Request) {
     const flatBatches = planData.flatBatches || [];
     const flatProductBatches = planData.flatProductBatches || [];
 
+    // --- 新規追加: 実行済み（計量完了）の時刻データを取得 ---
+    const usageRows = await db.all(
+      `SELECT batch_id, ingredient_code, created_at FROM ingredient_usages WHERE target_date = ?`, 
+      [date]
+    );
+    
+    // batch_id -> ingredient_code -> time str (例: "14:35") のマップを作成
+    const doneTimeMap: Record<string, Record<string, string>> = {};
+    if (usageRows && Array.isArray(usageRows)) {
+      usageRows.forEach((row: any) => {
+        // created_at は PostgreSQL の場合 UTC で保存されているため JST (Asia/Tokyo) に変換する
+        if (row.created_at) {
+          const d = new Date(row.created_at + 'Z'); // UTCとしてパース（Supabaseの文字列フォーマットに依存）
+          // 万が一 Invalid Date などを防ぐ
+          if (!isNaN(d.getTime())) {
+            // 'ja-JP'ロケールで時間と分を指定 (例: "14:35")
+            const timeStr = d.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
+            if (!doneTimeMap[row.batch_id]) {
+              doneTimeMap[row.batch_id] = {};
+            }
+            doneTimeMap[row.batch_id][row.ingredient_code] = timeStr;
+          }
+        }
+      });
+    }
+    // --------------------------------------------------------
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Antigravity Bakery';
 
@@ -88,10 +115,15 @@ export async function GET(request: Request) {
           const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / 100);
           
           const reqW = Math.round(requiredWeight * 10) / 10;
+          
+          // 該当バッチ・材料の計量完了時刻があれば取得
+          const doneTime = doneTimeMap[batch.id]?.[ing.ingredientCode] || '';
+
           const row = sheet1.addRow([
             ing.ingredientName,
             `${ing.bakersPercent}%`,
-            reqW
+            reqW,
+            doneTime
           ]);
           
           row.getCell(3).numFmt = '#,##0.##" g"';
@@ -165,7 +197,8 @@ export async function GET(request: Request) {
       
       // 生地を最初の行として出力
       if (batch.doughName && currentDoughWeight > 0) {
-         const dRow = sheet2.addRow([ `${batch.doughName} (生地)`, '', currentDoughWeight ]);
+         // アプリ側の仕様では「生地」自体の完了チェックはないため空欄にします
+         const dRow = sheet2.addRow([ `${batch.doughName} (生地)`, '', currentDoughWeight, '' ]);
          dRow.getCell(1).font = { bold: true, color: { argb: 'FFB45309' } }; // Amber 700
          dRow.getCell(3).numFmt = '#,##0.##" g"';
          dRow.getCell(3).alignment = { horizontal: 'center' };
@@ -182,10 +215,14 @@ export async function GET(request: Request) {
           const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
           const reqWeight = Math.round(perItemWeight * currentQty * 10) / 10;
           
+          // 該当バッチ・材料の計量完了時刻があれば取得
+          const doneTime = doneTimeMap[batch.id]?.[ing.ingredientCode] || '';
+
           const row = sheet2.addRow([
             ing.ingredientName,
             '',
-            reqWeight
+            reqWeight,
+            doneTime
           ]);
           
           row.getCell(3).numFmt = '#,##0.##" g"';
