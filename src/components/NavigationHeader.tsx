@@ -27,13 +27,14 @@ export default function NavigationHeader() {
   return (
     <header className="bg-white text-slate-800 shadow-sm border-b border-slate-200 relative overflow-hidden">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between relative z-10">
-        <Link href="/" className="hover:opacity-80 transition-opacity">
+        <Link href="/" className="hover:opacity-80 transition-opacity flex items-end gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
-            src="/MKBBG.jpg" 
-            alt="Bakery Batch Engine for MAISON KAYSER" 
+            src="/Bakery-Batch-Engine-Logo-New.png" 
+            alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
+          <span className="text-xs font-bold text-slate-400 mb-2">Ver. 2.01</span>
         </Link>
         
         {/* ロール切り替えトグル */}
