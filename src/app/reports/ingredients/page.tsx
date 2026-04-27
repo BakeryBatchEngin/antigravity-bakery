@@ -22,6 +22,7 @@ export default function IngredientsReportPage() {
   const [targetMonth, setTargetMonth] = useState<string>('');
   const [totals, setTotals] = useState<IngredientTotal[]>([]);
   const [history, setHistory] = useState<IngredientHistory[]>([]);
+  const [salesSummary, setSalesSummary] = useState({ total_retail_sales: 0, total_wholesale_sales: 0 });
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function IngredientsReportPage() {
       if (res.ok) {
         setTotals(data.totals || []);
         setHistory(data.history || []);
+        setSalesSummary(data.salesSummary || { total_retail_sales: 0, total_wholesale_sales: 0 });
       }
     } catch (e) {
       console.error(e);
@@ -68,8 +70,15 @@ export default function IngredientsReportPage() {
     window.location.href = `/api/reports/ingredients/export?month=${targetMonth}`;
   };
 
+  const totalMaterialCost = totals.reduce((acc, t) => {
+    if (t.purchase_weight && t.purchase_price) {
+      return acc + Math.round(t.total_grams * (t.purchase_price / t.purchase_weight));
+    }
+    return acc;
+  }, 0);
+
   return (
-    <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900">
+    <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden">
       <div className="flex-none flex items-center justify-between bg-white dark:bg-slate-800 p-4 border-b border-slate-200 dark:border-slate-700 shadow-sm z-10">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-800 dark:text-slate-100">
@@ -91,23 +100,49 @@ export default function IngredientsReportPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex flex-col items-center">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8 pb-32 flex flex-col items-center">
         {isLoading ? (
            <div className="animate-spin text-4xl mt-12">🔄</div>
         ) : (
-          <div className="w-full max-w-5xl bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden mb-12">
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
-              <h3 className="text-2xl font-black text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                <span>🗓️</span> {targetMonth} の実績
-              </h3>
-              <button 
-                onClick={handleExportExcel}
-                disabled={totals.length === 0}
-                className={`px-5 py-3 ${totals.length === 0 ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold rounded-xl shadow-md flex items-center gap-2 transition-transform active:scale-95`}
-              >
-                <span className="text-xl">📗</span> Excel(.xlsx) 出力
-              </button>
-            </div>
+          <div className="w-full max-w-5xl flex flex-col gap-6 mb-12">
+            {/* サマリーカード */}
+            {!isLoading && totals.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 border-t-4 border-amber-500">
+                  <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-2"><span>💰</span> 予想売上 (一般)</h4>
+                  <p className="text-3xl font-black text-slate-800 dark:text-slate-100">¥ {Number(salesSummary.total_retail_sales).toLocaleString()}</p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 border-t-4 border-blue-500">
+                  <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-2"><span>🏢</span> 社内取引売上</h4>
+                  <p className="text-3xl font-black text-slate-800 dark:text-slate-100">¥ {Number(salesSummary.total_wholesale_sales).toLocaleString()}</p>
+                </div>
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 border-t-4 border-red-500">
+                  <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-2"><span>🛒</span> 原材料費合計</h4>
+                  <div className="flex items-end justify-between">
+                    <p className="text-3xl font-black text-red-600 dark:text-red-400">¥ {totalMaterialCost.toLocaleString()}</p>
+                    {Number(salesSummary.total_wholesale_sales) > 0 && (
+                      <p className="text-sm font-bold text-slate-500">
+                        (原価率 {((totalMaterialCost / Number(salesSummary.total_wholesale_sales)) * 100).toFixed(1)}%)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80">
+                <h3 className="text-2xl font-black text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                  <span>🗓️</span> {targetMonth} の実績
+                </h3>
+                <button 
+                  onClick={handleExportExcel}
+                  disabled={totals.length === 0}
+                  className={`px-5 py-3 ${totals.length === 0 ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold rounded-xl shadow-md flex items-center gap-2 transition-transform active:scale-95`}
+                >
+                  <span className="text-xl">📗</span> Excel(.xlsx) 出力
+                </button>
+              </div>
 
             {totals.length === 0 ? (
               <div className="p-16 text-center">
@@ -145,6 +180,7 @@ export default function IngredientsReportPage() {
                 </table>
               </div>
             )}
+            </div>
           </div>
         )}
       </div>

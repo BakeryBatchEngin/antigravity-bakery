@@ -32,6 +32,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '出力するデータがありません' }, { status: 404 });
     }
 
+    // 売上サマリーを取得
+    const salesSummaryRow = await db.get(`
+      SELECT 
+        SUM(o.quantity * COALESCE(p.retail_price, 0)) as total_retail_sales,
+        SUM(o.quantity * COALESCE(p.wholesale_price, 0)) as total_wholesale_sales
+      FROM orders o
+      LEFT JOIN products p ON o.product_code = p.product_code
+      WHERE o.order_date LIKE ?
+    `, [`${month}-%`]);
+    const totalRetailSales = Number(salesSummaryRow?.total_retail_sales) || 0;
+    const totalWholesaleSales = Number(salesSummaryRow?.total_wholesale_sales) || 0;
+
     // 2. 月間データ集計 (水を除外)
     const monthlyTotalsMap = new Map();
     usages.forEach((u: any) => {
@@ -49,6 +61,13 @@ export async function GET(request: Request) {
     });
     // sort by code
     const monthlyTotals = Array.from(monthlyTotalsMap.values()).sort((a,b) => a.code.localeCompare(b.code));
+
+    let totalMaterialCost = 0;
+    monthlyTotals.forEach(t => {
+      if (t.purchase_weight && t.purchase_price) {
+        totalMaterialCost += Math.round(t.grams * (t.purchase_price / t.purchase_weight));
+      }
+    });
 
     // Workbook作成
     const workbook = new ExcelJS.Workbook();
@@ -74,7 +93,22 @@ export async function GET(request: Request) {
     // Row 2
     sheet1.addRow([]);
 
-    // Row 3 (Headers)
+    // サマリー行を追加
+    const summaryTitleRow = sheet1.addRow(['【サマリー】']);
+    summaryTitleRow.font = { bold: true };
+    const r1 = sheet1.addRow(['予想売上 (一般)', totalRetailSales]);
+    r1.getCell(2).numFmt = '"¥"#,##0';
+    const r2 = sheet1.addRow(['社内取引売上', totalWholesaleSales]);
+    r2.getCell(2).numFmt = '"¥"#,##0';
+    
+    const rCost = sheet1.addRow(['原材料費合計', totalMaterialCost, totalWholesaleSales > 0 ? (totalMaterialCost / totalWholesaleSales) : '']);
+    rCost.getCell(2).numFmt = '"¥"#,##0';
+    if (totalWholesaleSales > 0) {
+      rCost.getCell(3).numFmt = '0.0%';
+    }
+    sheet1.addRow([]);
+
+    // Data Headers
     const headerRow = sheet1.addRow(['材料コード', '材料名', '総使用量(g)', '原材料費(円)']);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }; // 白文字
     headerRow.eachCell(cell => {

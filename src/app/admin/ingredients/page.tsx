@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Ingredient {
   ingredient_code: string;
   ingredient_name: string;
   purchase_weight: number | null;
   purchase_price: number | null;
+  status: string;
 }
 
 export default function IngredientsMasterPage() {
@@ -16,6 +17,7 @@ export default function IngredientsMasterPage() {
   // 検索・ソート用ステート
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'code' | 'name'>('code');
+  const [showHidden, setShowHidden] = useState(false);
 
   // フォーム用ステート
   const [isEditing, setIsEditing] = useState(false);
@@ -24,9 +26,13 @@ export default function IngredientsMasterPage() {
     ingredient_name: '',
     purchase_weight: null,
     purchase_price: null,
+    status: 'active',
   });
   
   const [errorMsg, setErrorMsg] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     fetchIngredients();
@@ -55,7 +61,7 @@ export default function IngredientsMasterPage() {
   };
 
   const handleCancel = () => {
-    setFormData({ ingredient_code: '', ingredient_name: '', purchase_weight: null, purchase_price: null });
+    setFormData({ ingredient_code: '', ingredient_name: '', purchase_weight: null, purchase_price: null, status: 'active' });
     setIsEditing(false);
     setErrorMsg('');
   };
@@ -100,8 +106,42 @@ export default function IngredientsMasterPage() {
     }
   };
 
+  const handleDownloadExcel = () => {
+    window.location.href = '/api/admin/ingredients/export';
+  };
+
+  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setErrorMsg('');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/admin/ingredients/import', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Excelのアップロードに成功しました');
+        fetchIngredients();
+      } else {
+        setErrorMsg(data.error || 'アップロードに失敗しました');
+      }
+    } catch (err) {
+      setErrorMsg('アップロード通信エラー');
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   // 検索・並べ替えロジック
   const filteredIngredients = ingredients.filter(ing => {
+    if (!showHidden && (ing.status === 'deleted' || ing.status === 'suspended')) return false;
     if (!searchQuery) return true;
     const lowerQ = searchQuery.toLowerCase();
     return ing.ingredient_code.toLowerCase().includes(lowerQ) ||
@@ -120,6 +160,28 @@ export default function IngredientsMasterPage() {
         <h1 className="text-3xl font-black text-white flex items-center gap-3">
           <span className="text-4xl text-amber-500">🍳</span> Ingredient Master
         </h1>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleDownloadExcel}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm flex items-center gap-2 transition-colors"
+          >
+            📥 Excelダウンロード
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className={`px-4 py-2 ${isUploading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold rounded-lg shadow-sm flex items-center gap-2 transition-colors`}
+          >
+            {isUploading ? '⏳ 処理中...' : '📤 Excelアップロード'}
+          </button>
+          <input 
+            type="file" 
+            accept=".xlsx" 
+            ref={fileInputRef} 
+            onChange={handleUploadExcel} 
+            className="hidden" 
+          />
+        </div>
       </div>
 
       {errorMsg && (
@@ -181,6 +243,19 @@ export default function IngredientsMasterPage() {
               />
             </div>
             
+            <div className="w-full md:w-32">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">ステータス</label>
+              <select 
+                value={formData.status}
+                onChange={e => setFormData({...formData, status: e.target.value})}
+                className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-shadow bg-white"
+              >
+                <option value="active">有効</option>
+                <option value="suspended">利用停止</option>
+                <option value="deleted">削除</option>
+              </select>
+            </div>
+            
             <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
               <button 
                 type="submit" 
@@ -221,15 +296,26 @@ export default function IngredientsMasterPage() {
                 あいうえお順
               </button>
             </div>
-            <div className="relative w-full sm:w-64">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-              <input 
-                type="text" 
-                placeholder="材料名やコードで検索..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none block"
-              />
+            <div className="relative w-full sm:w-64 flex flex-col items-end gap-2">
+              <div className="relative w-full">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="材料名やコードで検索..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none block"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={showHidden} 
+                  onChange={(e) => setShowHidden(e.target.checked)} 
+                  className="rounded text-amber-500 focus:ring-amber-500"
+                />
+                利用停止・削除を表示
+              </label>
             </div>
           </div>
         </div>
@@ -241,6 +327,7 @@ export default function IngredientsMasterPage() {
                 <th className="py-3 px-6 font-bold">Name</th>
                 <th className="py-3 px-6 font-bold text-right">仕入量</th>
                 <th className="py-3 px-6 font-bold text-right">仕入価格</th>
+                <th className="py-3 px-6 font-bold text-center">状態</th>
                 <th className="py-3 px-6 w-24 text-center">操作</th>
               </tr>
             </thead>
@@ -256,6 +343,11 @@ export default function IngredientsMasterPage() {
                     <td className="py-3 px-6 font-bold text-slate-800">{ing.ingredient_name}</td>
                     <td className="py-3 px-6 text-right text-slate-600">{ing.purchase_weight ? `${ing.purchase_weight.toLocaleString()} g` : '-'}</td>
                     <td className="py-3 px-6 text-right text-slate-600">{ing.purchase_price ? `¥${ing.purchase_price.toLocaleString()}` : '-'}</td>
+                    <td className="py-3 px-6 text-center">
+                      {ing.status === 'active' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">有効</span>}
+                      {ing.status === 'suspended' && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">利用停止</span>}
+                      {ing.status === 'deleted' && <span className="px-2 py-1 bg-slate-200 text-slate-500 text-xs font-bold rounded-full">削除</span>}
+                    </td>
                     <td className="py-3 px-6 text-center">
                       <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 

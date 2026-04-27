@@ -18,6 +18,8 @@ interface ProductIngredient {
 interface Product {
   product_code: string;
   product_name: string;
+  retail_price: number;
+  wholesale_price: number;
   doughs: ProductDough[];
   ingredients: ProductIngredient[];
 }
@@ -47,6 +49,8 @@ export default function ProductsMasterPage() {
   const [formData, setFormData] = useState<Product>({
     product_code: '',
     product_name: '',
+    retail_price: 0,
+    wholesale_price: 0,
     doughs: [],
     ingredients: [],
   });
@@ -83,7 +87,7 @@ export default function ProductsMasterPage() {
   };
 
   const handleCancel = () => {
-    setFormData({ product_code: '', product_name: '', doughs: [], ingredients: [] });
+    setFormData({ product_code: '', product_name: '', retail_price: 0, wholesale_price: 0, doughs: [], ingredients: [] });
     setIsEditing(false);
     setErrorMsg('');
   };
@@ -253,6 +257,37 @@ export default function ProductsMasterPage() {
               </div>
             </div>
 
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">一般販売価格 (円)</label>
+                <input 
+                  type="text" 
+                  value={formData.retail_price ? formData.retail_price.toLocaleString() : ''}
+                  onChange={e => {
+                    const rawVal = e.target.value.replace(/,/g, '');
+                    const num = parseInt(rawVal, 10);
+                    setFormData({...formData, retail_price: isNaN(num) ? 0 : num});
+                  }}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-right font-mono"
+                  placeholder="例: 250"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">社内取引価格 (円)</label>
+                <input 
+                  type="text" 
+                  value={formData.wholesale_price ? formData.wholesale_price.toLocaleString() : ''}
+                  onChange={e => {
+                    const rawVal = e.target.value.replace(/,/g, '');
+                    const num = parseInt(rawVal, 10);
+                    setFormData({...formData, wholesale_price: isNaN(num) ? 0 : num});
+                  }}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-right font-mono"
+                  placeholder="例: 200"
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 使用生地リスト */}
               <div className="border border-blue-200 bg-blue-50/30 rounded-lg p-4">
@@ -418,6 +453,17 @@ export default function ProductsMasterPage() {
                   <div className="mb-4 pr-16">
                     <span className="text-xs font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded shadow-sm">{prod.product_code}</span>
                     <h3 className="font-black text-xl text-slate-800 mt-2">{prod.product_name}</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-4 bg-white p-3 rounded border border-slate-200">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 block">一般販売価格</span>
+                      <span className="text-lg font-black text-slate-700">¥ {prod.retail_price?.toLocaleString() || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 block">社内取引価格</span>
+                      <span className="text-lg font-black text-slate-700">¥ {prod.wholesale_price?.toLocaleString() || 0}</span>
+                    </div>
                   </div>
 
                   <div className="space-y-3">

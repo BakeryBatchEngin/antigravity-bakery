@@ -34,7 +34,22 @@ export async function GET(request: Request) {
       ORDER BY target_date DESC, batch_id ASC
     `, [`${month}-%`]);
 
-    return NextResponse.json({ success: true, month, totals, history });
+    // 月間の売上サマリー（受注データから計算）
+    const salesSummaryRow = await db.get(`
+      SELECT 
+        SUM(o.quantity * COALESCE(p.retail_price, 0)) as total_retail_sales,
+        SUM(o.quantity * COALESCE(p.wholesale_price, 0)) as total_wholesale_sales
+      FROM orders o
+      LEFT JOIN products p ON o.product_code = p.product_code
+      WHERE o.order_date LIKE ?
+    `, [`${month}-%`]);
+
+    const salesSummary = {
+      total_retail_sales: Number(salesSummaryRow?.total_retail_sales) || 0,
+      total_wholesale_sales: Number(salesSummaryRow?.total_wholesale_sales) || 0
+    };
+
+    return NextResponse.json({ success: true, month, totals, history, salesSummary });
   } catch (error) {
     console.error('Error fetching report:', error);
     return NextResponse.json({ error: '集計データの取得に失敗しました' }, { status: 500 });

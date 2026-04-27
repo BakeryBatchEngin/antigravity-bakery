@@ -80,6 +80,16 @@ export async function initDb() {
   `);
 
   await database.exec(`
+    CREATE TABLE IF NOT EXISTS products (
+      product_code TEXT PRIMARY KEY,
+      product_name TEXT NOT NULL,
+      retail_price INTEGER DEFAULT 0,
+      wholesale_price INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await database.exec(`
     DROP TABLE IF EXISTS product_doughs CASCADE;
     CREATE TABLE product_doughs (
       product_code TEXT NOT NULL,
@@ -98,6 +108,7 @@ export async function initDb() {
       ingredient_name TEXT NOT NULL,
       purchase_weight INTEGER,
       purchase_price INTEGER,
+      status TEXT DEFAULT 'active',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);

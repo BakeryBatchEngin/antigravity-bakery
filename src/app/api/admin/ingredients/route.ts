@@ -14,7 +14,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { ingredient_code, ingredient_name, purchase_weight, purchase_price } = await request.json();
+    const { ingredient_code, ingredient_name, purchase_weight, purchase_price, status } = await request.json();
     
     if (!ingredient_code || !ingredient_name) {
       return NextResponse.json({ error: '材料コードと材料名は必須です' }, { status: 400 });
@@ -25,13 +25,14 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
     try {
       await db.run(`
-        INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price, status)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(ingredient_code) DO UPDATE SET
           ingredient_name = excluded.ingredient_name,
           purchase_weight = excluded.purchase_weight,
-          purchase_price = excluded.purchase_price
-      `, [ingredient_code, ingredient_name, purchase_weight || null, purchase_price || null]);
+          purchase_price = excluded.purchase_price,
+          status = excluded.status
+      `, [ingredient_code, ingredient_name, purchase_weight || null, purchase_price || null, status || 'active']);
 
       // 副材料マスタの名前が変更された場合、関連テーブルも更新する
       await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
@@ -58,15 +59,11 @@ export async function DELETE(request: Request) {
 
     const db = await getDb();
     
-    // ここで他のテーブル（生地や商品副材料など）で使われているかチェックを入れるとより堅牢になります
-    const doughUsage = await db.get('SELECT 1 FROM doughs WHERE ingredient_code = ? LIMIT 1', [code]);
-    const prodUsage = await db.get('SELECT 1 FROM product_ingredients WHERE ingredient_code = ? LIMIT 1', [code]);
-    
-    if (doughUsage || prodUsage) {
-      return NextResponse.json({ error: 'この材料は生地または商品の副材料として使用されているため削除できません' }, { status: 400 });
-    }
+    // 論理削除への変更により、使用中チェックは警告なしで通すことも可能ですが、
+    // 誤操作防止のためそのまま残すか、論理削除なので通すか。
+    // 今回は論理削除なので、過去の使用履歴があっても削除（無効化）できるように使用中チェックを外します。
 
-    await db.run('DELETE FROM ingredients WHERE ingredient_code = ?', [code]);
+    await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ?", [code]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -5,11 +5,9 @@ export async function GET() {
   try {
     const db = await getDb();
     
-    // 全商品コードと名前を取得するため、2つのテーブルからUNION
+    // productsテーブルから全商品を取得
     const baseProducts = await db.all(`
-      SELECT product_code, product_name FROM product_doughs
-      UNION
-      SELECT product_code, product_name FROM product_ingredients
+      SELECT product_code, product_name, retail_price, wholesale_price FROM products
       ORDER BY product_code ASC
     `);
 
@@ -24,6 +22,8 @@ export async function GET() {
       productsMap.set(p.product_code, {
         product_code: p.product_code,
         product_name: p.product_name,
+        retail_price: p.retail_price || 0,
+        wholesale_price: p.wholesale_price || 0,
         doughs: [],
         ingredients: []
       });
@@ -60,7 +60,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { product_code, product_name, doughs, ingredients } = await request.json();
+    const { product_code, product_name, retail_price, wholesale_price, doughs, ingredients } = await request.json();
     
     if (!product_code || !product_name) {
       return NextResponse.json({ error: '商品コードと商品名は必須です' }, { status: 400 });
@@ -79,6 +79,16 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
     
     try {
+      // products テーブルの upsert
+      await db.run(`
+        INSERT INTO products (product_code, product_name, retail_price, wholesale_price)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(product_code) DO UPDATE SET
+          product_name = excluded.product_name,
+          retail_price = excluded.retail_price,
+          wholesale_price = excluded.wholesale_price
+      `, [product_code, product_name, retail_price || 0, wholesale_price || 0]);
+
       // 既存データを一度削除して作り直す
       await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
       await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
@@ -141,6 +151,7 @@ export async function DELETE(request: Request) {
 
     await db.run('BEGIN TRANSACTION');
     try {
+      await db.run('DELETE FROM products WHERE product_code = ?', [code]);
       await db.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
       await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
       await db.run('COMMIT');
