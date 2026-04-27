@@ -34,7 +34,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className="text-xs font-bold text-slate-400 mb-2">Ver. 2.01</span>
+          <span className="text-xs font-bold text-slate-400 mb-2">Ver. 2.03</span>
         </Link>
         
         {/* ロール切り替えトグル */}
