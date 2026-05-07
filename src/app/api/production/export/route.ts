@@ -41,8 +41,8 @@ export async function GET(request: Request) {
           const d = new Date(row.created_at + 'Z'); // UTCとしてパース（Supabaseの文字列フォーマットに依存）
           // 万が一 Invalid Date などを防ぐ
           if (!isNaN(d.getTime())) {
-            // 'ja-JP'ロケールで時間と分を指定 (例: "14:35")
-            const timeStr = d.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
+            // 'ja-JP'ロケールで年月日時分を指定 (例: "2026/05/07 14:35")
+            const timeStr = d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
             if (!doneTimeMap[row.batch_id]) {
               doneTimeMap[row.batch_id] = {};
             }
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     sheet1.getColumn(1).width = 25; // 材料名
     sheet1.getColumn(2).width = 15; // 指(%)/個数
     sheet1.getColumn(3).width = 20; // 計量(g)
-    sheet1.getColumn(4).width = 8;  // Check
+    sheet1.getColumn(4).width = 20; // 計量日時
 
     // タイトル
     const titleRow1 = sheet1.addRow([`【生地仕込み詳細】対象日: ${date}`, '', '', '']);
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
       }
 
       // ヘッダー行
-      const headerRow = sheet1.addRow(['材料名', '指定(%)', '計量 (g)', '確']);
+      const headerRow = sheet1.addRow(['材料名', '指定(%)', '計量 (g)', '計量日時']);
       headerRow.font = { bold: true };
       headerRow.eachCell((cell, colNum) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Slate 100
@@ -151,7 +151,7 @@ export async function GET(request: Request) {
     sheet2.getColumn(1).width = 25; // 材料・生地名
     sheet2.getColumn(2).width = 15; // (空白・使用数)
     sheet2.getColumn(3).width = 20; // グラム数
-    sheet2.getColumn(4).width = 8;  // Check
+    sheet2.getColumn(4).width = 20; // 計量日時
 
     const titleRow2 = sheet2.addRow([`【本日の全商品仕込み】対象日: ${date}`, '', '', '']);
     sheet2.mergeCells('A1:D1');
@@ -185,7 +185,7 @@ export async function GET(request: Request) {
       }
 
       // ヘッダー行
-      const headerRow2 = sheet2.addRow(['材料（生地・副材料）', '', '総計量 (g)', '確']);
+      const headerRow2 = sheet2.addRow(['材料（生地・副材料）', '', '総計量 (g)', '計量日時']);
       headerRow2.font = { bold: true };
       headerRow2.eachCell((cell, colNum) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; 
