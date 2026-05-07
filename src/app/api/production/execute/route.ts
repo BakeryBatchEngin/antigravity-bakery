@@ -9,16 +9,20 @@ export async function POST(request: Request) {
     }
     const db = await getDb();
     
-    // SQLiteを使ったトランザクション風の安全な複数挿入（重複回避のためまず削除して再挿入）
+    // SQLiteを使った安全な挿入（既存のデータを消さずに、存在しない場合のみ追加する）
     await db.run('BEGIN TRANSACTION');
     try {
-      await db.run('DELETE FROM ingredient_usages WHERE target_date = ? AND batch_id = ?', [date, batchId]);
-      
       for (const ing of ingredients) {
-          await db.run(`
-              INSERT INTO ingredient_usages (target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
-              VALUES (?, ?, ?, ?, ?)
-          `, [date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+          const existing = await db.get(
+            'SELECT 1 FROM ingredient_usages WHERE target_date = ? AND batch_id = ? AND ingredient_code = ?',
+            [date, batchId, ing.ingredientCode]
+          );
+          if (!existing) {
+              await db.run(`
+                  INSERT INTO ingredient_usages (target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+                  VALUES (?, ?, ?, ?, ?)
+              `, [date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+          }
       }
       await db.run('COMMIT');
     } catch(err) {
@@ -41,8 +45,15 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'パラメータが不足しています' }, { status: 400 });
     }
 
+    const ingredientCode = searchParams.get('ingredientCode');
+
     const db = await getDb();
-    await db.run('DELETE FROM ingredient_usages WHERE target_date = ? AND batch_id = ?', [date, batchId]);
+    
+    if (ingredientCode) {
+      await db.run('DELETE FROM ingredient_usages WHERE target_date = ? AND batch_id = ? AND ingredient_code = ?', [date, batchId, ingredientCode]);
+    } else {
+      await db.run('DELETE FROM ingredient_usages WHERE target_date = ? AND batch_id = ?', [date, batchId]);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -727,15 +727,20 @@ export default function ProductionPlanPage() {
     // 生地バッチの計算
     flatBatches.forEach(batch => {
       const flourBakersPercent = 100;
-      const ingredients = batch.baseIngredients.map(ing => ({
-        ingredientCode: ing.ingredientCode,
-        ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 10) / 10
-      }));
-      exportBatches.push({ batchId: batch.id, ingredients });
+      const unCheckedIngredients = batch.baseIngredients.filter(ing => !checkedIngredients[batch.id]?.[ing.ingredientCode]);
+
+      if (unCheckedIngredients.length > 0) {
+        const ingredients = unCheckedIngredients.map(ing => ({
+          ingredientCode: ing.ingredientCode,
+          ingredientName: ing.ingredientName,
+          requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 10) / 10
+        }));
+        exportBatches.push({ batchId: batch.id, ingredients });
+      }
+
       newExecutedIds.push(batch.id);
       
-      const checks: Record<string, boolean> = {};
+      const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
       batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
       newCheckedState[batch.id] = checks;
     });
@@ -743,15 +748,20 @@ export default function ProductionPlanPage() {
     // 商品バッチの計算
     flatProductBatches.forEach(batch => {
       const safeOriginalQty = batch.originalBatchQuantity || 1;
-      const ingredients = batch.baseIngredients.map(ing => ({
-        ingredientCode: ing.ingredientCode,
-        ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 10) / 10
-      }));
-      exportBatches.push({ batchId: batch.id, ingredients });
+      const unCheckedIngredients = batch.baseIngredients.filter(ing => !checkedIngredients[batch.id]?.[ing.ingredientCode]);
+
+      if (unCheckedIngredients.length > 0) {
+        const ingredients = unCheckedIngredients.map(ing => ({
+          ingredientCode: ing.ingredientCode,
+          ingredientName: ing.ingredientName,
+          requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 10) / 10
+        }));
+        exportBatches.push({ batchId: batch.id, ingredients });
+      }
+
       newExecutedIds.push(batch.id);
 
-      const checks: Record<string, boolean> = {};
+      const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
       batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
       newCheckedState[batch.id] = checks;
     });
@@ -921,33 +931,38 @@ export default function ProductionPlanPage() {
     const allCheckedNow = calculatedIngredients.length > 0 && calculatedIngredients.every(ing => newBatchChecks[ing.ingredientCode]);
     const wasExecuted = executedBatchIds.includes(batchId);
 
-    // 状態が変わる場合のみAPIを叩く
+    // 対象の材料の情報を探す
+    const targetIng = calculatedIngredients.find(ing => ing.ingredientCode === ingredientCode);
+    
+    if (targetIng) {
+      if (!isCurrentlyChecked) {
+        // チェックをつけた場合、その材料だけ POST する
+        try {
+          await fetch('/api/production/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: targetDate,
+              batchId: batchId,
+              ingredients: [targetIng]
+            })
+          });
+        } catch(e) { console.error(e); }
+      } else {
+        // チェックを外した場合、その材料だけ DELETE する
+        try {
+          await fetch(`/api/production/execute?date=${targetDate}&batchId=${batchId}&ingredientCode=${ingredientCode}`, {
+            method: 'DELETE',
+          });
+        } catch(e) { console.error(e); }
+      }
+    }
+
+    // UI上のバッチ全体実行済みフラグ（緑の帯など）の制御
     if (allCheckedNow && !wasExecuted) {
-      // 実行済みとしてDBに記録
-      try {
-        const res = await fetch('/api/production/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            date: targetDate,
-            batchId: batchId,
-            ingredients: calculatedIngredients
-          })
-        });
-        if (res.ok) {
-          setExecutedBatchIds(prev => [...prev, batchId]);
-        }
-      } catch(e) { console.error(e); }
+      setExecutedBatchIds(prev => [...prev, batchId]);
     } else if (!allCheckedNow && wasExecuted) {
-       // 実行済みの撤回（キャンセル）
-       try {
-        const res = await fetch(`/api/production/execute?date=${targetDate}&batchId=${batchId}`, {
-          method: 'DELETE',
-        });
-        if (res.ok) {
-          setExecutedBatchIds(prev => prev.filter(id => id !== batchId));
-        }
-      } catch(e) { console.error(e); }
+      setExecutedBatchIds(prev => prev.filter(id => id !== batchId));
     }
   };
 

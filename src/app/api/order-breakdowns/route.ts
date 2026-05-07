@@ -64,12 +64,20 @@ export async function POST(request: Request) {
     let count = 0;
     for (const bd of breakdowns) {
       if (mode === 'append') {
-        // 同じ日付・商品・発注元の行があれば削除してから再挿入（上書き）
-        await db.run(
-          `DELETE FROM order_breakdowns
+        const existing = await db.get(
+          `SELECT id, quantity FROM order_breakdowns
            WHERE order_date = ? AND product_code = ? AND display_name = ?`,
           [bd.order_date, bd.product_code, bd.display_name]
         );
+
+        if (existing) {
+          await db.run(
+            `UPDATE order_breakdowns SET quantity = quantity + ? WHERE id = ?`,
+            [bd.quantity, existing.id]
+          );
+          count++;
+          continue; // UPDATEしたのでINSERTはスキップ
+        }
       }
 
       await db.run(

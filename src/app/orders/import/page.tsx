@@ -106,7 +106,7 @@ export default function OrderImportPage() {
     const extractedBreakdowns: OrderBreakdownItem[] = [];
     const errors: string[] = [];
 
-    // ─── 発注元ヘッダーの解析（G列 = index 6 から total_amount の1つ前まで） ───
+    // ─── 発注元ヘッダーの解析（D列 = index 3 から total_amount の1つ前まで） ───
     // headerRow（2行目）: 発注元会社名
     // headerRow+1（3行目）: 便・部署名（空白の場合もある）
     const vendorSubRow = data[headerRowIndex + 1] || [];
@@ -114,7 +114,7 @@ export default function OrderImportPage() {
     // 各列のインデックス → { customer_name, dept_name, display_name } のマップを作成
     const vendorCols: { colIndex: number; customerName: string; deptName: string; displayName: string }[] = [];
 
-    for (let colIdx = 6; colIdx < totalAmountColIndex; colIdx++) {
+    for (let colIdx = 3; colIdx < totalAmountColIndex; colIdx++) {
       let customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
       
       // もしセルの値がない場合、このセルがExcel上で「結合（マージ）されている」ことによる空白か判定する
