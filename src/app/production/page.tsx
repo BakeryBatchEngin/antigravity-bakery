@@ -1149,77 +1149,83 @@ export default function ProductionPlanPage() {
           </h2>
         </div>
         
-        <div className="flex gap-4 w-full sm:w-auto items-center">
+        <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto items-center justify-start sm:justify-end">
           
-          {/* Set / Reset ボタン */}
-          <div className="flex items-center gap-2 mr-2">
-            <button 
-              onClick={handleSetPlan}
-              className={`px-4 py-2 text-white font-bold rounded-lg shadow-md transition-all flex items-center gap-2 transform active:scale-95 ${
-                isPlanSet ? "bg-slate-500 hover:bg-slate-600" : "bg-amber-500 hover:bg-amber-600"
-              }`}
-              title={isPlanSet ? "ロックを解除して数量を再調整します" : "現在のバッチ数量で本日の計画を確定・ロックします"}
-            >
-              {isPlanSet ? '🔓 Unlock' : '💾 Set'}
-            </button>
-            <button 
-              onClick={handleResetPlan}
-              className="px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2"
-              title="計画をリセットし、注文データから再計算します"
-            >
-              🔄 Reset
-            </button>
+          {/* ボタン群をラップするコンテナでスマホ時に折り返しを制御 */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-700 pb-2 sm:pb-0 sm:pr-4">
+            {/* Set / Reset ボタン */}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={handleSetPlan}
+                className={`px-3 sm:px-4 py-2 text-white font-bold rounded-lg shadow-md transition-all flex items-center gap-1 sm:gap-2 transform active:scale-95 text-sm sm:text-base ${
+                  isPlanSet ? "bg-slate-500 hover:bg-slate-600" : "bg-amber-500 hover:bg-amber-600"
+                }`}
+                title={isPlanSet ? "ロックを解除して数量を再調整します" : "現在のバッチ数量で本日の計画を確定・ロックします"}
+              >
+                {isPlanSet ? '🔓 Unlock' : '💾 Set'}
+              </button>
+              <button 
+                onClick={handleResetPlan}
+                className="px-2 sm:px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
+                title="計画をリセットし、注文データから再計算します"
+              >
+                🔄 Reset
+              </button>
+            </div>
+
+            {/* 新規追加：一括実行 / Excel出力 */}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={handleAllDone}
+                className="px-2 sm:px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1 sm:gap-2 transform active:scale-95 text-sm sm:text-base"
+                title="表示されているすべてのバッチを一括で実行済み（チェック完了）にします"
+              >
+                ✅ All done
+              </button>
+              <button 
+                disabled={!isPlanSet}
+                onClick={handleExportExcel}
+                className={`px-2 sm:px-3 py-2 font-bold rounded-lg shadow-sm flex items-center gap-1 sm:gap-2 transition-all text-sm sm:text-base ${
+                  isPlanSet 
+                    ? "bg-blue-500 hover:bg-blue-600 text-white cursor-pointer transform active:scale-95" 
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed opacity-60"
+                }`}
+                title={isPlanSet ? "この内容で詳細エクセルを出力します" : "エクセルを出力するには、先に「Set」して確定してください"}
+              >
+                📊 Excel出力
+              </button>
+            </div>
           </div>
 
-          {/* 新規追加：一括実行 / Excel出力 */}
-          <div className="flex items-center gap-2 mr-2 border-r border-slate-300 dark:border-slate-600 pr-4">
-            <button 
-              onClick={handleAllDone}
-              className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2 transform active:scale-95"
-              title="表示されているすべてのバッチを一括で実行済み（チェック完了）にします"
-            >
-              ✅ All done
-            </button>
-            <button 
-              disabled={!isPlanSet}
-              onClick={handleExportExcel}
-              className={`px-3 py-2 font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all ${
-                isPlanSet 
-                  ? "bg-blue-500 hover:bg-blue-600 text-white cursor-pointer transform active:scale-95" 
-                  : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed opacity-60"
-              }`}
-              title={isPlanSet ? "この内容で詳細エクセルを出力します" : "エクセルを出力するには、先に「Set」して確定してください"}
-            >
-              📊 Excel出力
-            </button>
+          {/* カレンダー・戻るボタン */}
+          <div className="flex items-center justify-between w-full sm:w-auto gap-2">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 rounded-xl p-1 border border-slate-300 dark:border-slate-600 focus-within:border-amber-500 transition-colors flex-1 sm:flex-none">
+              <button 
+                onClick={() => shiftDate(-1)}
+                className="px-2 sm:px-3 py-1 sm:py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors font-bold flex items-center justify-center"
+                aria-label="前日へ"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+              </button>
+              <input 
+                type="date" 
+                value={targetDate} 
+                onChange={handleDateChange} 
+                style={{ colorScheme: 'dark' }}
+                className="px-1 sm:px-2 py-1 bg-transparent text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 outline-none w-full sm:w-auto text-center"
+              />
+              <button 
+                onClick={() => shiftDate(1)}
+                className="px-2 sm:px-3 py-1 sm:py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors font-bold flex items-center justify-center"
+                aria-label="翌日へ"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+              </button>
+            </div>
+            <Link href="/" className="shrink-0 px-3 sm:px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold transition-colors text-sm sm:text-base">
+              🏠 戻る
+            </Link>
           </div>
-
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 rounded-xl p-1 border border-slate-300 dark:border-slate-600 focus-within:border-amber-500 transition-colors">
-            <button 
-              onClick={() => shiftDate(-1)}
-              className="px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors font-bold flex items-center justify-center"
-              aria-label="前日へ"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
-            </button>
-            <input 
-              type="date" 
-              value={targetDate} 
-              onChange={handleDateChange} 
-              style={{ colorScheme: 'dark' }}
-              className="px-2 py-1 bg-transparent text-lg font-bold text-slate-700 dark:text-slate-200 outline-none w-full sm:w-auto text-center"
-            />
-            <button 
-              onClick={() => shiftDate(1)}
-              className="px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors font-bold flex items-center justify-center"
-              aria-label="翌日へ"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-            </button>
-          </div>
-          <Link href="/" className="shrink-0 px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold transition-colors">
-            🏠 戻る
-          </Link>
         </div>
       </div>
 
@@ -1354,8 +1360,8 @@ export default function ProductionPlanPage() {
                     </div>
 
                     {/* 下部: 回数と重量アジャスター */}
-                    <div className="flex items-center justify-between mt-auto">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-2 sm:gap-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
                           {batch.batchNumber}
                         </span>
@@ -1363,15 +1369,15 @@ export default function ProductionPlanPage() {
                       </div>
                       
                       {/* 重量表示とアジャストボタン */}
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 sm:gap-3 self-end sm:self-auto">
                         <div className="flex flex-col items-end">
                           <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">粉量</span>
-                          <div className={`text-2xl font-black tracking-tight leading-none ${weightColorClass}`}>
-                            {(currentFlourWeight / 1000).toFixed(0)}<span className="text-sm font-bold ml-0.5 opacity-80">kg</span>
+                          <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${weightColorClass}`}>
+                            {(currentFlourWeight / 1000).toFixed(0)}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">kg</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1">
+                        <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1 shrink-0">
                           <AutoRepeatButton 
                             onAction={(e: any) => adjustWeight(batch.id, batch.doughCode, 1, e)}
                             disabled={isExecuted || isPlanSet}
@@ -1390,12 +1396,12 @@ export default function ProductionPlanPage() {
                           </AutoRepeatButton>
                         </div>
                         
-                        <div className="text-slate-300 font-light text-2xl mx-1">/</div>
+                        <div className="text-slate-300 font-light text-xl sm:text-2xl mx-0 sm:mx-1">/</div>
                         
                         <div className="flex flex-col items-end">
                           <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-widest leading-none mb-1 ${totalColorClass.includes('blue') || totalColorClass.includes('red') ? totalColorClass : 'text-amber-600'}`}>総生地量</span>
-                          <div className={`text-2xl font-black tracking-tight leading-none ${totalColorClass}`}>
-                            {(currentTotalWeight / 1000).toFixed(2)}<span className="text-sm font-bold ml-0.5 opacity-80">kg</span>
+                          <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${totalColorClass}`}>
+                            {(currentTotalWeight / 1000).toFixed(2)}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">kg</span>
                           </div>
                         </div>
 
@@ -1515,8 +1521,8 @@ export default function ProductionPlanPage() {
                         </div>
 
                         {/* 下部: 回数と重量アジャスター */}
-                        <div className="flex items-center justify-between mt-auto">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-2 sm:gap-0">
+                          <div className="flex items-center gap-2 shrink-0">
                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
                               {batch.batchNumber}
                             </span>
@@ -1524,15 +1530,15 @@ export default function ProductionPlanPage() {
                           </div>
                           
                           {/* 重量表示とアジャストボタン */}
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1 sm:gap-3 self-end sm:self-auto">
                             <div className="flex flex-col items-end">
                               <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">バッチ個数</span>
-                              <div className={`text-2xl font-black tracking-tight leading-none ${qtyColorClass}`}>
-                                {currentQty}<span className="text-sm font-bold ml-0.5 opacity-80">個</span>
+                              <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${qtyColorClass}`}>
+                                {currentQty}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">個</span>
                               </div>
                             </div>
 
-                            <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1">
+                            <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1 shrink-0">
                               <AutoRepeatButton 
                                 onAction={(e: any) => adjustProductQuantity(batch.id, batch.productCode, 1, e)}
                                 disabled={isExecuted || isPlanSet}
@@ -1551,12 +1557,12 @@ export default function ProductionPlanPage() {
                               </AutoRepeatButton>
                             </div>
                             
-                            <div className="text-slate-300 font-light text-2xl mx-1">/</div>
+                            <div className="text-slate-300 font-light text-xl sm:text-2xl mx-0 sm:mx-1">/</div>
                             
                             <div className="flex flex-col items-end">
                               <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-widest leading-none mb-1 ${totalQtyColorClass.includes('blue') || totalQtyColorClass.includes('red') ? totalQtyColorClass : 'text-amber-600'}`}>オーダー累計</span>
-                              <div className={`text-2xl font-black tracking-tight leading-none ${totalQtyColorClass}`}>
-                                {orgTotalQty}<span className="text-sm font-bold ml-0.5 opacity-80">個</span>
+                              <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${totalQtyColorClass}`}>
+                                {orgTotalQty}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">個</span>
                               </div>
                             </div>
                           </div>

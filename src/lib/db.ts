@@ -62,6 +62,17 @@ export async function getDb() {
 export async function initDb() {
   const database = await getDb();
   
+  // 【安全装置】本番データベースの初期化を防止
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+  // Vercel本番のプロジェクトIDが含まれているかチェック
+  const isProdUrl = process.env.DATABASE_URL?.includes('klyyjcvezaletaazcrgx');
+
+  if (isProduction || isProdUrl) {
+    throw new Error("❌ 【安全装置作動】本番環境（または本番用データベース）に対するテーブルの初期化（DROP TABLE等）は禁止されています！");
+  }
+
+  // 以降、安全なローカル/開発DBに対してのみ実行される
+
   // PostgreSQL用に INTEGER PRIMARY KEY AUTOINCREMENT を SERIAL PRIMARY KEY に翻訳済み
   // DATETIME は TIMESTAMP に翻訳済み
 
@@ -181,6 +192,36 @@ export async function initDb() {
       display_name  TEXT NOT NULL,
       quantity      INTEGER NOT NULL,
       created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // フェーズ1: ユーザー＆店舗管理基盤
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS stores (
+      id SERIAL PRIMARY KEY,
+      store_code TEXT UNIQUE NOT NULL,
+      store_name TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'master', 'manager', 'chef')),
+      pin_code TEXT,
+      password TEXT, -- 簡易実装のため平文パスワード（本番ではハッシュ推奨）
+      display_name TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS user_stores (
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_id, store_id)
     );
   `);
 

@@ -12,14 +12,19 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
     try {
       for (const batch of batches) {
-        // 全体の重複実行を防ぐため、まずこのバッチの記録を削除
-        await db.run('DELETE FROM ingredient_usages WHERE target_date = ? AND batch_id = ?', [date, batch.batchId]);
-        
         for (const ing of batch.ingredients) {
-            await db.run(`
-                INSERT INTO ingredient_usages (target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
-                VALUES (?, ?, ?, ?, ?)
-            `, [date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+            // 既に登録されているか確認し、登録されていなければ INSERT する
+            const existing = await db.get(
+              'SELECT 1 FROM ingredient_usages WHERE target_date = ? AND batch_id = ? AND ingredient_code = ?',
+              [date, batch.batchId, ing.ingredientCode]
+            );
+            
+            if (!existing) {
+                await db.run(`
+                    INSERT INTO ingredient_usages (target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+                    VALUES (?, ?, ?, ?, ?)
+                `, [date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+            }
         }
       }
       await db.run('COMMIT');
