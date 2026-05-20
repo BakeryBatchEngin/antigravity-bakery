@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "history": "tsx scripts/generate-history.ts"
+    "history": "tsx scripts/generate-history.ts",
+    "db:sync": "tsx scripts/sync-db.ts"
   },
   "dependencies": {
     "@types/sqlite3": "^3.1.11",
