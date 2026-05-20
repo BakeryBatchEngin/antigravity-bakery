@@ -6,7 +6,8 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "history": "tsx scripts/generate-history.ts"
   },
   "dependencies": {
     "@types/sqlite3": "^3.1.11",

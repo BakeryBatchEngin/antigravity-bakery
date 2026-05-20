@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 
@@ -8,10 +9,47 @@ export async function GET(request: Request) {
     const date = searchParams.get('date');
     if (!date) return NextResponse.json({ error: 'date parameter is required' }, { status: 400 });
 
+    // ===== 関所ロジック：セッションと店舗権限をチェックする =====
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('bakery_session');
+    if (!sessionCookie || !sessionCookie.value) {
+      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+    }
+
+    let user: any;
+    try {
+      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+    } catch (e) {
+      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
+    }
+
     const db = await getDb();
-    
-    // 確定プランを取得
-    const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ?`, [date]);
+    const storeCookie = cookieStore.get('active_store_id');
+    const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
+    let storeId: number | null = null;
+
+    if (['admin', 'master', 'manager'].includes(user.role)) {
+      storeId = requestedStoreId;
+    } else if (user.role === 'chef') {
+      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
+      if (!userStores || userStores.length === 0) {
+        return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
+      }
+      const allowedStoreIds = userStores.map((row: any) => Number(row.store_id));
+      if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
+        storeId = requestedStoreId;
+      } else {
+        storeId = allowedStoreIds[0];
+      }
+    } else {
+      return NextResponse.json({ error: 'アクセス権限がありません' }, { status: 403 });
+    }
+
+    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
+    // ===== 関所ここまで =====
+
+    // 確定プランを取得（store_id でも絞り込み）
+    const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ? AND store_id = ?`, [date, storeId]);
     if (!savedPlanRow) {
       return NextResponse.json({ error: '指定された日付の仕込み計画が確定(Set)されていません。まずは画面でSetボタンを押してください。' }, { status: 404 });
     }
@@ -26,10 +64,10 @@ export async function GET(request: Request) {
     const flatBatches = planData.flatBatches || [];
     const flatProductBatches = planData.flatProductBatches || [];
 
-    // --- 新規追加: 実行済み（計量完了）の時刻データを取得 ---
+    // --- 実行済み（計量完了）の時刻データを取得（store_id でも絞り込み）---
     const usageRows = await db.all(
-      `SELECT batch_id, ingredient_code, created_at FROM ingredient_usages WHERE target_date = ?`, 
-      [date]
+      `SELECT batch_id, ingredient_code, created_at FROM ingredient_usages WHERE target_date = ? AND store_id = ?`, 
+      [date, storeId]
     );
     
     // batch_id -> ingredient_code -> time str (例: "14:35") のマップを作成

@@ -228,14 +228,21 @@ export default function OrderImportPage() {
     try {
       setIsProcessing(true);
 
-      // まずは check モードで同一日付のデータがあるか確認
       const checkRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: parsedOrders, mode: 'check' }),
       });
       
-      const checkResult = await checkRes.json();
+      const checkResText = await checkRes.text();
+      let checkResult;
+      try {
+        checkResult = JSON.parse(checkResText);
+      } catch (e) {
+        alert('サーバーから不正なレスポンスが返されました（check）\n' + checkResText.substring(0, 300));
+        setIsProcessing(false);
+        return;
+      }
       
       if (checkRes.ok && checkResult.exists) {
         // 既存データがある場合はモーダルでユーザーに選択させる
@@ -244,10 +251,16 @@ export default function OrderImportPage() {
         return;
       }
       
+      if (!checkRes.ok) {
+         alert(`エラー: ${checkResult.error || '不明なエラー'}\n${checkResult.details || ''}`);
+         setIsProcessing(false);
+         return;
+      }
+
       // 既存データがない場合はそのまま append (新規登録) する
       await proceedSave('append');
-    } catch (error) {
-      alert('通信エラーが発生しました');
+    } catch (error: any) {
+      alert('通信エラーが発生しました: ' + error.message);
       console.error(error);
       setIsProcessing(false);
     }
@@ -266,10 +279,19 @@ export default function OrderImportPage() {
         body: JSON.stringify({ orders: parsedOrders, mode }),
       });
       
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        alert('サーバーから不正なレスポンスが返されました（orders）\n' + responseText.substring(0, 300));
+        setIsProcessing(false);
+        return;
+      }
       
       if (!response.ok) {
-        alert(`エラー: ${result.error}`);
+        alert(`エラー: ${result.error}${result.details ? '\n詳細: ' + result.details : ''}`);
+        setIsProcessing(false);
         return;
       }
 
@@ -280,9 +302,14 @@ export default function OrderImportPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ breakdowns: parsedBreakdowns, mode }),
         });
-        if (!bdRes.ok) {
-          // 内訳保存は補助機能なので警告だけ表示して続行
-          console.warn('内訳データの保存に失敗しました（合計データは保存済みです）');
+        
+        try {
+          const bdResult = await bdRes.json();
+          if (!bdRes.ok) {
+            console.warn('内訳データの保存に失敗しました: ', bdResult);
+          }
+        } catch (e) {
+          console.warn('内訳データの保存に失敗しました（JSONパースエラー）');
         }
       }
 

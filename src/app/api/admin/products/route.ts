@@ -5,19 +5,16 @@ export async function GET() {
   try {
     const db = await getDb();
     
-    // productsテーブルから全商品を取得
-    const baseProducts = await db.all(`
-      SELECT product_code, product_name, retail_price, wholesale_price FROM products
-      ORDER BY product_code ASC
-    `);
-
-    // 各テーブルのデータを全取得
-    const [doughRows, ingRows] = await Promise.all([
-      db.all('SELECT * FROM product_doughs'),
-      db.all('SELECT * FROM product_ingredients')
+    // products, product_doughs, product_ingredients の全テーブルから商品コードを収集する
+    // （products テーブルに登録されていない商品も拾えるようにするため）
+    const [baseProducts, doughRows, ingRows] = await Promise.all([
+      db.all('SELECT product_code, product_name, retail_price, wholesale_price FROM products ORDER BY product_code ASC'),
+      db.all('SELECT * FROM product_doughs ORDER BY product_code ASC'),
+      db.all('SELECT * FROM product_ingredients ORDER BY product_code ASC'),
     ]);
 
-    const productsMap = new Map();
+    // products テーブルの情報を Map に格納
+    const productsMap = new Map<string, any>();
     baseProducts.forEach((p: any) => {
       productsMap.set(p.product_code, {
         product_code: p.product_code,
@@ -29,27 +26,48 @@ export async function GET() {
       });
     });
 
+    // product_doughs に含まれる商品コードが products テーブルに存在しない場合も追加
     doughRows.forEach((row: any) => {
-      if (productsMap.has(row.product_code)) {
-        productsMap.get(row.product_code).doughs.push({
-          dough_code: row.dough_code,
-          dough_name: row.dough_name,
-          dough_amount: row.dough_amount
+      if (!productsMap.has(row.product_code)) {
+        productsMap.set(row.product_code, {
+          product_code: row.product_code,
+          product_name: row.product_name || row.product_code,
+          retail_price: 0,
+          wholesale_price: 0,
+          doughs: [],
+          ingredients: []
         });
       }
+      productsMap.get(row.product_code).doughs.push({
+        dough_code: row.dough_code,
+        dough_name: row.dough_name,
+        dough_amount: row.dough_amount
+      });
     });
 
+    // product_ingredients に含まれる商品コードも同様に補完
     ingRows.forEach((row: any) => {
-      if (productsMap.has(row.product_code)) {
-        productsMap.get(row.product_code).ingredients.push({
-          ingredient_code: row.ingredient_code,
-          ingredient_name: row.ingredient_name,
-          ingredient_amount: row.ingredient_amount
+      if (!productsMap.has(row.product_code)) {
+        productsMap.set(row.product_code, {
+          product_code: row.product_code,
+          product_name: row.product_name || row.product_code,
+          retail_price: 0,
+          wholesale_price: 0,
+          doughs: [],
+          ingredients: []
         });
       }
+      productsMap.get(row.product_code).ingredients.push({
+        ingredient_code: row.ingredient_code,
+        ingredient_name: row.ingredient_name,
+        ingredient_amount: row.ingredient_amount
+      });
     });
 
-    const products = Array.from(productsMap.values());
+    // Map を配列に変換してコード順にソート
+    const products = Array.from(productsMap.values()).sort((a, b) =>
+      a.product_code.localeCompare(b.product_code)
+    );
     
     return NextResponse.json({ success: true, products });
   } catch (error) {

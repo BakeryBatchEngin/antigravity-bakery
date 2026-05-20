@@ -48,3 +48,19 @@ next-env.d.ts
 # Generated Media
 *.mp4
 *.ai
+
+# History output
+/history/
+
+# 開発・デバッグ用スクリプト（本番不要）
+check_*.ts
+check_*.js
+test_*.ts
+test_*.js
+test_fetch.js
+cleanup-mixers.js
+migrate-mixers.js
+scripts/
+
+# テスト用サンプルデータ
+test_sample_bakery_data/

@@ -2,14 +2,16 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // 認証不要でアクセスできるパス（ログインAPIや画像など）
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/favicon.ico'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico'];
+
+// マネージャー専用APIの許可パス（/api/reports/manager は /reports に含まれるためOK）
 
 // ロールごとのアクセス可能パス（接頭辞）
 const ROLE_ACCESS = {
   admin: ['/'], // admin は全パスアクセス可能とするので特殊扱い
-  master: ['/admin/ingredients', '/admin/doughs', '/admin/products', '/production', '/reports'], // 管理画面とレポート、生産画面
-  manager: ['/production', '/reports'], // 仕込み画面とレポート画面
-  chef: ['/production'], // 仕込み画面のみ
+  master: ['/admin/ingredients', '/admin/doughs', '/admin/products', '/production', '/reports', '/orders', '/order-breakdowns', '/settings'], 
+  manager: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/manager'], 
+  chef: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers'], 
 };
 
 export function middleware(request: NextRequest) {
@@ -65,7 +67,9 @@ export function middleware(request: NextRequest) {
     // トップページ（`/`）へのアクセス時は、権限に応じたポータルへ飛ばす処理は page.tsx 側で行うが
     // もし直接URLを叩かれた場合のチェック
     if (pathname !== '/') {
-      const isAllowed = allowedPaths.some(p => pathname.startsWith(p));
+      const isAllowed = allowedPaths.some(p => 
+        pathname.startsWith(p) || pathname.startsWith('/api' + p)
+      );
       if (!isAllowed) {
         // アクセス権限がない場合はトップページ（ポータル）へ
         return NextResponse.redirect(new URL('/', request.url));

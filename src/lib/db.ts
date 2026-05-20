@@ -1,10 +1,17 @@
 import { Pool } from 'pg';
 
-// Supabase (PostgreSQL) 接続用のプールを作成
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+// Poolの遅延初期化
+let pool: Pool | null = null;
+
+function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+  }
+  return pool;
+}
 
 /**
  * 【自動翻訳エンジン】
@@ -26,21 +33,21 @@ class PgCompatibleDb {
   // 1行だけ取得するメソッド (SQLiteの db.get 互換)
   async get(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const { rows } = await pool.query(pgSql, params);
+    const { rows } = await getPool().query(pgSql, params);
     return rows[0] || undefined;
   }
 
   // 全行取得するメソッド (SQLiteの db.all 互換)
   async all(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const { rows } = await pool.query(pgSql, params);
+    const { rows } = await getPool().query(pgSql, params);
     return rows;
   }
 
   // 更新や挿入を行うメソッド (SQLiteの db.run 互換)
   async run(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const result = await pool.query(pgSql, params);
+    const result = await getPool().query(pgSql, params);
     // SQLite互換の戻り値をエミュレート
     return { changes: result.rowCount, lastID: 0 }; 
   }
@@ -48,7 +55,7 @@ class PgCompatibleDb {
   // 複数行のSQLをまとめて実行するメソッド (SQLiteの db.exec 互換)
   async exec(sql: string) {
     // プレースホルダは使われない前提のDDL実行など
-    await pool.query(sql);
+    await getPool().query(sql);
   }
 }
 
@@ -80,6 +87,7 @@ export async function initDb() {
     DROP TABLE IF EXISTS orders CASCADE;
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       order_date TEXT NOT NULL,
       store_name TEXT,
       delivery_shift TEXT,
@@ -160,18 +168,23 @@ export async function initDb() {
   `);
   
   await database.exec(`
+    DROP TABLE IF EXISTS daily_production_plans CASCADE;
     CREATE TABLE IF NOT EXISTS daily_production_plans (
       id SERIAL PRIMARY KEY,
-      target_date TEXT UNIQUE NOT NULL,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+      target_date TEXT NOT NULL,
       plan_data TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(target_date, store_id)
     );
   `);
 
   await database.exec(`
+    DROP TABLE IF EXISTS ingredient_usages CASCADE;
     CREATE TABLE IF NOT EXISTS ingredient_usages (
       id SERIAL PRIMARY KEY,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       target_date TEXT NOT NULL,
       batch_id TEXT NOT NULL,
       ingredient_code TEXT NOT NULL,
@@ -181,10 +194,12 @@ export async function initDb() {
     );
   `);
   
-  // 発注元ごとの内訳データを格納するテーブル（既存データを壊さないようDROPなし）
+  // 発注元ごとの内訳データを格納するテーブル
   await database.exec(`
+    DROP TABLE IF EXISTS order_breakdowns CASCADE;
     CREATE TABLE IF NOT EXISTS order_breakdowns (
       id            SERIAL PRIMARY KEY,
+      store_id      INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       order_date    TEXT NOT NULL,
       product_code  TEXT NOT NULL,
       customer_name TEXT NOT NULL,

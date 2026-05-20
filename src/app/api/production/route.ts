@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -12,18 +13,59 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '日付(date)が指定されていません' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('bakery_session');
+    
+    if (!sessionCookie || !sessionCookie.value) {
+      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+    }
+    
+    let user;
+    try {
+      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+    } catch (e) {
+      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
+    }
 
-    const mixers = await db.all('SELECT * FROM mixer_capacities ORDER BY max_capacity_kg DESC');
+    const db = await getDb();
+    const storeCookie = cookieStore.get('active_store_id');
+    const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
+    let storeId = null;
+
+    if (['admin', 'master', 'manager'].includes(user.role)) {
+      storeId = requestedStoreId;
+    } else if (user.role === 'chef') {
+      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
+      if (!userStores || userStores.length === 0) {
+        return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
+      }
+      
+      const allowedStoreIds = userStores.map((row: any) => Number(row.store_id));
+      
+      if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
+        storeId = requestedStoreId;
+      } else {
+        // 未指定、または不正なIDの場合は所属店舗の1つ目をデフォルトセット
+        storeId = allowedStoreIds[0];
+      }
+    } else {
+      return NextResponse.json({ error: 'アクセス権限がありません' }, { status: 403 });
+    }
+
+    if (!storeId) {
+      return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
+    }
+
+    const mixers = await db.all('SELECT * FROM mixer_capacities WHERE store_id = ? ORDER BY max_capacity_kg DESC', [storeId]);
     const defaultMixer = mixers.length > 0 ? mixers[0] : null;
     const MIXER_LIMIT_G = defaultMixer ? defaultMixer.max_capacity_kg * 1000 : 50000;
 
     const orderedProductsRaw = await db.all(`
       SELECT product_code, MAX(product_name) as order_product_name, SUM(quantity) as total_quantity
       FROM orders
-      WHERE order_date = ? AND product_code IS NOT NULL AND product_code != ''
+      WHERE order_date = ? AND store_id = ? AND product_code IS NOT NULL AND product_code != ''
       GROUP BY product_code
-    `, [date]);
+    `, [date, storeId]);
 
     // 最新のマスタ商品名を取得
     const masterProductNames = await db.all(`
@@ -53,7 +95,7 @@ export async function GET(request: Request) {
     // ==========================================
     // 1.5 手動で保存(Set)された計画データと実行済み状態の取得
     // ==========================================
-    const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ?`, [date]);
+    const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ? AND store_id = ?`, [date, storeId]);
     let savedFlatBatches = null;
     let savedFlatProductBatches = null;
     let isPlanSet = false;
@@ -70,8 +112,8 @@ export async function GET(request: Request) {
     }
 
     // どのバッチがすでに完了（実行済み）したかのリストを取得
-    const executions = await db.all(`SELECT DISTINCT batch_id FROM ingredient_usages WHERE target_date = ?`, [date]);
-    const executedBatchIds = executions.map(e => e.batch_id);
+    const executions = await db.all(`SELECT DISTINCT batch_id FROM ingredient_usages WHERE target_date = ? AND store_id = ?`, [date, storeId]);
+    const executedBatchIds = executions.map((e: any) => e.batch_id);
 
     // ==========================================
     // A. ベース生地のミキシング計画 (productionPlan)

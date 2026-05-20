@@ -39,20 +39,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '認証に失敗しました' }, { status: 401 });
     }
 
-    // 認証成功時、ユーザー情報をJSONでシリアライズしてCookieに保存（簡易実装）
-    // セキュリティ上、本番ではJWT署名などが必要ですが、今回はBase64エンコードの簡易セッションとします
+    // 担当店舗を取得
+    const userStores = await db.all(`SELECT store_id FROM user_stores WHERE user_id = $1`, [user.id]);
+    // store_id を必ず数値として扱う（PostgreSQLが文字列で返す場合があるため）
+    const storeIds = userStores.map((s: any) => Number(s.store_id));
+
+    // 認証成功時、ユーザー情報をJSONでシリアライズしてCookieに保存
     const sessionData = {
       id: user.id,
       username: user.username,
       role: user.role,
-      displayName: user.display_name
+      displayName: user.display_name,
+      storeIds: storeIds
     };
     
     const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
 
     const response = NextResponse.json({ success: true, user: sessionData });
     
-    // httpOnly, SameSite=Lax な Cookie をセット
+    // セッションCookieをセット
     response.cookies.set({
       name: 'bakery_session',
       value: sessionString,
@@ -61,6 +66,42 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24 * 7, // 1週間有効
       sameSite: 'lax',
     });
+
+    // デフォルトの active_store_id をセット
+    if (user.role === 'manager') {
+      // マネージャーはデフォルトで「マネージャーモード」からスタート
+      response.cookies.set({
+        name: 'active_store_id',
+        value: 'manager',
+        httpOnly: true,
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: 'lax',
+      });
+    } else if (storeIds.length > 0) {
+      // シェフなど：担当店舗の最初の1件をデフォルトに設定
+      response.cookies.set({
+        name: 'active_store_id',
+        value: String(storeIds[0]),
+        httpOnly: true,
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: 'lax',
+      });
+    } else if (user.role === 'admin' || user.role === 'master') {
+      // Admin/Master の場合は最初の店舗をフォールバックとしてセット
+      const firstStore = await db.get(`SELECT id FROM stores ORDER BY store_code ASC LIMIT 1`);
+      if (firstStore) {
+        response.cookies.set({
+          name: 'active_store_id',
+          value: String(firstStore.id),
+          httpOnly: true,
+          path: '/',
+          maxAge: 60 * 60 * 24 * 30,
+          sameSite: 'lax',
+        });
+      }
+    }
 
     return response;
   } catch (error) {
