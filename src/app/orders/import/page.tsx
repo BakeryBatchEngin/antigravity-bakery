@@ -114,6 +114,8 @@ export default function OrderImportPage() {
     // 各列のインデックス → { customer_name, dept_name, display_name } のマップを作成
     const vendorCols: { colIndex: number; customerName: string; deptName: string; displayName: string }[] = [];
 
+    let lastSeenCustomerName = '';
+
     for (let colIdx = 3; colIdx < totalAmountColIndex; colIdx++) {
       let customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
       
@@ -130,7 +132,14 @@ export default function OrderImportPage() {
         }
       }
 
-      if (!customerName) continue; // マージもなく本当に空白の列（レイアウト用など）は無視する
+      // マージ情報がない、またはマージを読み取れなかった場合でも、直前の列の会社名を引き継ぐ（Excelで単に空白にしているケース対応）
+      if (!customerName && lastSeenCustomerName) {
+        customerName = lastSeenCustomerName;
+      } else if (customerName) {
+        lastSeenCustomerName = customerName;
+      }
+
+      if (!customerName) continue; // 先頭の不要な空白列などは無視する
 
       const deptName = vendorSubRow[colIdx] ? String(vendorSubRow[colIdx]).trim() : '';
       const displayName = customerName + (deptName ? ` ${deptName}` : ''); // 便名がある場合は見やすく「高島屋 1便」のように空白を空ける
