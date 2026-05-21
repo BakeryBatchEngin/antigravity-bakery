@@ -1611,7 +1611,7 @@ export default function ProductionPlanPage() {
                         <div className="text-4xl mb-3">💭</div>
                         <p className="text-slate-500 font-bold">内訳データがありません</p>
                         <p className="text-sm text-slate-400 mt-2">
-                          発注元内訳は、Excelインポート時にG列以降に発注元別数量が記載されている場合に表示されます。
+                          発注元内訳は、Excelインポート時にD列以降に発注元別数量が記載されている場合に表示されます。同じExcelを再インポートすると内訳データが保存されます。
                         </p>
                       </div>
                     ) : (
