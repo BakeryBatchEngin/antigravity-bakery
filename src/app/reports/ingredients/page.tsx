@@ -120,9 +120,9 @@ export default function IngredientsReportPage() {
                   <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-2"><span>🛒</span> 原材料費合計</h4>
                   <div className="flex items-end justify-between">
                     <p className="text-3xl font-black text-red-600 dark:text-red-400">¥ {totalMaterialCost.toLocaleString()}</p>
-                    {Number(salesSummary.total_wholesale_sales) > 0 && (
+                    {Number(salesSummary.total_retail_sales) > 0 && (
                       <p className="text-sm font-bold text-slate-500">
-                        (原価率 {((totalMaterialCost / Number(salesSummary.total_wholesale_sales)) * 100).toFixed(1)}%)
+                        (原価率 {((totalMaterialCost / Number(salesSummary.total_retail_sales)) * 100).toFixed(1)}%)
                       </p>
                     )}
                   </div>

@@ -107,9 +107,9 @@ export async function GET(request: Request) {
     const r2 = sheet1.addRow(['社内取引売上', totalWholesaleSales]);
     r2.getCell(2).numFmt = '"¥"#,##0';
     
-    const rCost = sheet1.addRow(['原材料費合計', totalMaterialCost, totalWholesaleSales > 0 ? (totalMaterialCost / totalWholesaleSales) : '']);
+    const rCost = sheet1.addRow(['原材料費合計', totalMaterialCost, totalRetailSales > 0 ? (totalMaterialCost / totalRetailSales) : '']);
     rCost.getCell(2).numFmt = '"¥"#,##0';
-    if (totalWholesaleSales > 0) {
+    if (totalRetailSales > 0) {
       rCost.getCell(3).numFmt = '0.0%';
     }
     sheet1.addRow([]);
