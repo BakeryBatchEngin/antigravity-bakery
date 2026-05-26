@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 import { GET as getProductionPlan } from '@/app/api/production/route';
@@ -8,6 +9,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month'); // e.g., "2026-04"
     if (!month) return NextResponse.json({ error: 'month parameter is required' }, { status: 400 });
+
+    const cookieStore = await cookies();
+    const storeCookie = cookieStore.get('active_store_id');
+    const storeId = storeCookie ? Number(storeCookie.value) : null;
+    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
 
     const db = await getDb();
     
@@ -23,8 +29,8 @@ export async function GET(request: Request) {
         i.purchase_price
       FROM ingredient_usages u
       LEFT JOIN ingredients i ON u.ingredient_code = i.ingredient_code
-      WHERE u.target_date LIKE ?
-    `, [`${month}%`]);
+      WHERE u.target_date LIKE ? AND u.store_id = ?
+    `, [`${month}%`, storeId]);
 
     if (usages.length === 0) {
       // 履歴がゼロでも、ヘッダーだけのExcelを返すかどうかの処理
@@ -39,8 +45,8 @@ export async function GET(request: Request) {
         SUM(o.quantity * COALESCE(p.wholesale_price, 0)) as total_wholesale_sales
       FROM orders o
       LEFT JOIN products p ON o.product_code = p.product_code
-      WHERE o.order_date LIKE ?
-    `, [`${month}-%`]);
+      WHERE o.order_date LIKE ? AND o.store_id = ?
+    `, [`${month}-%`, storeId]);
     const totalRetailSales = Number(salesSummaryRow?.total_retail_sales) || 0;
     const totalWholesaleSales = Number(salesSummaryRow?.total_wholesale_sales) || 0;
 
