@@ -163,7 +163,8 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       icon TEXT NOT NULL,
-      max_capacity_kg INTEGER NOT NULL
+      max_capacity_kg INTEGER NOT NULL,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE
     );
   `);
   
