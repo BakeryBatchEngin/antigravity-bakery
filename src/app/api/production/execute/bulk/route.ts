@@ -19,18 +19,31 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
     try {
       for (const batch of batches) {
-        for (const ing of batch.ingredients) {
-            // 既に登録されているか確認し、登録されていなければ INSERT する
+        if (!batch.ingredients || batch.ingredients.length === 0) {
             const existing = await db.get(
               'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
-              [storeId, date, batch.batchId, ing.ingredientCode]
+              [storeId, date, batch.batchId, '__NO_INGREDIENTS__']
             );
-            
             if (!existing) {
                 await db.run(`
                     INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
                     VALUES (?, ?, ?, ?, ?, ?)
-                `, [storeId, date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+                `, [storeId, date, batch.batchId, '__NO_INGREDIENTS__', '副材料なし（実行済）', 0]);
+            }
+        } else {
+            for (const ing of batch.ingredients) {
+                // 既に登録されているか確認し、登録されていなければ INSERT する
+                const existing = await db.get(
+                  'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
+                  [storeId, date, batch.batchId, ing.ingredientCode]
+                );
+                
+                if (!existing) {
+                    await db.run(`
+                        INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `, [storeId, date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+                }
             }
         }
       }

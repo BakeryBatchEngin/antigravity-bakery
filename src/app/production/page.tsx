@@ -290,11 +290,14 @@ export default function ProductionPlanPage() {
     isLoading: false,
   });
 
-  // 初回レンダリング時に今日の日付をセットし、データをフェッチ
+  // 初回レンダリング時にURLのdateパラメータがあればそれを、なければ今日の日付をセットし、データをフェッチ
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get('date');
     const today = new Date().toISOString().split('T')[0];
-    setTargetDate(today);
-    fetchProductionPlan(today);
+    const initialDate = dateParam || today;
+    setTargetDate(initialDate);
+    fetchProductionPlan(initialDate);
   }, []);
 
   // 発注元内訳を取得してモーダルを開くハンドラ
@@ -736,12 +739,18 @@ export default function ProductionPlanPage() {
           requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 10) / 10
         }));
         exportBatches.push({ batchId: batch.id, ingredients });
+      } else if (batch.baseIngredients.length === 0 && !checkedIngredients[batch.id]?.['__NO_INGREDIENTS__']) {
+        exportBatches.push({ batchId: batch.id, ingredients: [] });
       }
 
       newExecutedIds.push(batch.id);
       
       const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
-      batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      if (batch.baseIngredients.length > 0) {
+        batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      } else {
+        checks['__NO_INGREDIENTS__'] = true;
+      }
       newCheckedState[batch.id] = checks;
     });
 
@@ -757,12 +766,18 @@ export default function ProductionPlanPage() {
           requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 10) / 10
         }));
         exportBatches.push({ batchId: batch.id, ingredients });
+      } else if (batch.baseIngredients.length === 0 && !checkedIngredients[batch.id]?.['__NO_INGREDIENTS__']) {
+        exportBatches.push({ batchId: batch.id, ingredients: [] });
       }
 
       newExecutedIds.push(batch.id);
 
       const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
-      batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      if (batch.baseIngredients.length > 0) {
+        batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      } else {
+        checks['__NO_INGREDIENTS__'] = true;
+      }
       newCheckedState[batch.id] = checks;
     });
 
@@ -811,7 +826,7 @@ export default function ProductionPlanPage() {
       currTotalFlour = (batch as FlatBatch)?.currentFlourWeightGrams || 0;
     }
     
-    if (!batch || batch.baseIngredients.length === 0) return;
+    if (!batch) return;
 
     let calculatedIngredients = [];
     if (isProduct) {
@@ -832,9 +847,13 @@ export default function ProductionPlanPage() {
     }
 
     const newBatchChecks: Record<string, boolean> = {};
-    batch.baseIngredients.forEach(ing => {
-      newBatchChecks[ing.ingredientCode] = !isCurrentlyAllChecked;
-    });
+    if (batch.baseIngredients.length > 0) {
+      batch.baseIngredients.forEach(ing => {
+        newBatchChecks[ing.ingredientCode] = !isCurrentlyAllChecked;
+      });
+    } else {
+      newBatchChecks['__NO_INGREDIENTS__'] = !isCurrentlyAllChecked;
+    }
 
     setCheckedIngredients(prev => ({
       ...prev,

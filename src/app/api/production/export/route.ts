@@ -147,7 +147,7 @@ export async function GET(request: Request) {
       });
 
       // 材料リスト
-      if (batch.baseIngredients && Array.isArray(batch.baseIngredients)) {
+      if (batch.baseIngredients && Array.isArray(batch.baseIngredients) && batch.baseIngredients.length > 0) {
         for (let idx = 0; idx < batch.baseIngredients.length; idx++) {
           const ing = batch.baseIngredients[idx];
           const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / 100);
@@ -176,6 +176,14 @@ export async function GET(request: Request) {
             if (c === 3) cell.font = { bold: true, size: 12, color: { argb: 'FFD97706' } }; // Amber 600
           }
         }
+      } else {
+         const doneTime = doneTimeMap[batch.id]?.['__NO_INGREDIENTS__'] || '';
+         const row = sheet1.addRow(['(材料なし)', '-', '-', doneTime]);
+         row.getCell(1).font = { italic: true, color: { argb: 'FF888888' } };
+         for (let c = 1; c <= 4; c++) {
+            row.getCell(c).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            if (c > 1) row.getCell(c).alignment = { horizontal: 'center' };
+         }
       }
       
       // バッチ間に少し隙間を空ける
@@ -248,7 +256,7 @@ export async function GET(request: Request) {
       }
 
       // 副材料を列挙
-      if (batch.baseIngredients && Array.isArray(batch.baseIngredients)) {
+      if (batch.baseIngredients && Array.isArray(batch.baseIngredients) && batch.baseIngredients.length > 0) {
         for (const ing of batch.baseIngredients) {
           const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
           const reqWeight = Math.round(perItemWeight * currentQty * 10) / 10;
@@ -276,6 +284,14 @@ export async function GET(request: Request) {
           }
           lineIdx++;
         }
+      } else {
+         const doneTime = doneTimeMap[batch.id]?.['__NO_INGREDIENTS__'] || '';
+         const row = sheet2.addRow(['(副材料なし)', '', '-', doneTime]);
+         row.getCell(1).font = { italic: true, color: { argb: 'FF888888' } };
+         for (let c = 1; c <= 4; c++) {
+            row.getCell(c).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            if (c > 1) row.getCell(c).alignment = { horizontal: 'center' };
+         }
       }
 
       // バッチ間に少し隙間を空ける

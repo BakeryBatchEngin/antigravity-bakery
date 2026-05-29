@@ -19,17 +19,30 @@ export async function POST(request: Request) {
     // SQLiteを使った安全な挿入（既存のデータを消さずに、存在しない場合のみ追加する）
     await db.run('BEGIN TRANSACTION');
     try {
-      for (const ing of ingredients) {
-          const existing = await db.get(
-            'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
-            [storeId, date, batchId, ing.ingredientCode]
-          );
-          if (!existing) {
-              await db.run(`
-                  INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
-                  VALUES (?, ?, ?, ?, ?, ?)
-              `, [storeId, date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
-          }
+      if (ingredients.length === 0) {
+        const existing = await db.get(
+          'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
+          [storeId, date, batchId, '__NO_INGREDIENTS__']
+        );
+        if (!existing) {
+            await db.run(`
+                INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [storeId, date, batchId, '__NO_INGREDIENTS__', '副材料なし（実行済）', 0]);
+        }
+      } else {
+        for (const ing of ingredients) {
+            const existing = await db.get(
+              'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
+              [storeId, date, batchId, ing.ingredientCode]
+            );
+            if (!existing) {
+                await db.run(`
+                    INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `, [storeId, date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+            }
+        }
       }
       await db.run('COMMIT');
     } catch(err) {

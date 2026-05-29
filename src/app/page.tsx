@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ManagerDashboardPage from "./manager/dashboard/page";
+import StatusCalendar from "@/components/StatusCalendar";
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -75,6 +76,10 @@ export default function Home() {
                 </span>
               )}
             </p>
+          </div>
+
+          <div className="w-full max-w-6xl mb-2">
+            <StatusCalendar />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 md:grid-cols-2 gap-6 w-full max-w-6xl">

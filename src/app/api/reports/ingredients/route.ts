@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         MAX(i.purchase_price) as purchase_price
       FROM ingredient_usages u
       LEFT JOIN ingredients i ON u.ingredient_code = i.ingredient_code
-      WHERE u.target_date LIKE ? AND u.store_id = ?
+      WHERE u.target_date LIKE ? AND u.store_id = ? AND u.ingredient_code != '__NO_INGREDIENTS__'
       GROUP BY u.ingredient_code, u.ingredient_name
       ORDER BY total_grams DESC
     `, [`${month}-%`, storeId]);

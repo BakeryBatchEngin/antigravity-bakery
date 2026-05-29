@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as xlsx from 'xlsx';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import StatusCalendar from '@/components/StatusCalendar';
 
 // Excelから抽出した「誰が、何を、何個」注文したかのデータ構造
 interface OrderItem {
@@ -25,6 +27,7 @@ interface OrderBreakdownItem {
 }
 
 export default function OrderImportPage() {
+  const router = useRouter();
   const [dataPreview, setDataPreview] = useState<any[][]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -33,6 +36,8 @@ export default function OrderImportPage() {
   const [parsedBreakdowns, setParsedBreakdowns] = useState<OrderBreakdownItem[]>([]);
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  // カレンダー用状態と関数は StatusCalendar に切り出しました
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -40,35 +45,102 @@ export default function OrderImportPage() {
 
     setFileName(file.name);
     setIsProcessing(true);
+    setImportErrors([]);
+    setImportWarnings([]);
+    setParsedOrders([]);
+    setParsedBreakdowns([]);
+    setDataPreview([]);
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = xlsx.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1 });
-      const merges = ws['!merges'] || [];
-      
-      setDataPreview(data);
-      extractOrders(data, wsname, merges);
-      setIsProcessing(false);
+      try {
+        const bstr = evt.target?.result;
+        const wb = xlsx.read(bstr, { type: 'binary' });
+
+        let allOrders: OrderItem[] = [];
+        let allBreakdowns: OrderBreakdownItem[] = [];
+        let allErrors: string[] = [];
+        let warnings: string[] = [];
+        let firstPreviewData: any[][] | null = null;
+        const seenDates = new Set<string>();
+
+        wb.SheetNames.forEach(wsname => {
+          // シート名から日付（YYYY-MM-DD）を生成
+          let orderDate = '';
+          // サポート形式: 20260301, 2026-03-01, 260301
+          const matchFull = wsname.match(/^(\d{4})[-/]?(\d{2})[-/]?(\d{2})$/);
+          const matchShort = wsname.match(/^(\d{2})(\d{2})(\d{2})$/);
+          
+          if (matchFull) {
+            orderDate = `${matchFull[1]}-${matchFull[2]}-${matchFull[3]}`;
+          } else if (matchShort && !wsname.startsWith('20')) {
+            orderDate = `20${matchShort[1]}-${matchShort[2]}-${matchShort[3]}`;
+          } else {
+            warnings.push(`シート「${wsname}」は日付形式ではないため無視しました。`);
+            return;
+          }
+
+          if (seenDates.has(orderDate)) {
+            allErrors.push(`エラー: 日付「${orderDate}」を表すシートが複数存在します（${wsname}等）。`);
+            return;
+          }
+          seenDates.add(orderDate);
+
+          const ws = wb.Sheets[wsname];
+          const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1 });
+          const merges = ws['!merges'] || [];
+
+          if (!firstPreviewData && data.length > 0) {
+            firstPreviewData = data;
+          }
+
+          const { extracted, extractedBreakdowns, errors } = extractOrdersFromSheet(data, orderDate, merges);
+          
+          if (errors.length > 0) {
+            allErrors.push(`シート「${wsname}」のエラー:`);
+            allErrors.push(...errors.map(e => `  - ${e}`));
+          } else {
+            allOrders.push(...extracted);
+            allBreakdowns.push(...extractedBreakdowns);
+          }
+        });
+
+        if (firstPreviewData) {
+          setDataPreview(firstPreviewData);
+        }
+
+        if (allOrders.length === 0 && allErrors.length === 0) {
+          allErrors.push('読み込める注文データがありませんでした。');
+        }
+
+        if (allErrors.length > 0) {
+          setImportErrors(allErrors);
+        } else {
+          setParsedOrders(allOrders);
+          setParsedBreakdowns(allBreakdowns);
+        }
+        
+        if (warnings.length > 0) {
+          setImportWarnings(warnings);
+        }
+      } catch (err: any) {
+        setImportErrors([`ファイル読み込みエラー: ${err.message}`]);
+      } finally {
+        setIsProcessing(false);
+      }
     };
     reader.readAsBinaryString(file);
   };
 
   // Excelの2次元配列データから、必要な注文データを抽出する関数
-  const extractOrders = (data: any[][], sheetName: string, merges: any[] = []) => {
-    if (!data || data.length < 3) return;
-    setImportErrors([]);
+  const extractOrdersFromSheet = (data: any[][], orderDate: string, merges: any[] = []) => {
+    const extracted: OrderItem[] = [];
+    const extractedBreakdowns: OrderBreakdownItem[] = [];
+    const errors: string[] = [];
 
-    // シート名から日付（YYYY-MM-DD）を生成
-    let orderDate = '';
-    const dateMatch = sheetName.match(/^(\d{4})(\d{2})(\d{2})$/);
-    if (dateMatch) {
-      orderDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
-    } else {
-      orderDate = new Date().toISOString().split('T')[0];
+    if (!data || data.length < 3) {
+      errors.push('データ行が不足しています。');
+      return { extracted, extractedBreakdowns, errors };
     }
 
     // ヘッダー行を探す
@@ -84,7 +156,7 @@ export default function OrderImportPage() {
 
     const headerRow = data[headerRowIndex] || [];
     
-    // total_amount列（大文字小文字・空白などを無視して探す）
+    // total_amount列を探す
     let totalAmountColIndex = -1;
     for (let j = 0; j < headerRow.length; j++) {
       if (headerRow[j]) {
@@ -97,52 +169,38 @@ export default function OrderImportPage() {
     }
 
     if (totalAmountColIndex === -1) {
-      setImportErrors(['エラー: ヘッダー行に「total_amount」という列が見つかりませんでした。']);
-      setParsedOrders([]);
-      return;
+      errors.push('ヘッダー行に「total_amount」という列が見つかりませんでした。');
+      return { extracted, extractedBreakdowns, errors };
     }
 
-    const extracted: OrderItem[] = [];
-    const extractedBreakdowns: OrderBreakdownItem[] = [];
-    const errors: string[] = [];
-
     // ─── 発注元ヘッダーの解析（D列 = index 3 から total_amount の1つ前まで） ───
-    // headerRow（2行目）: 発注元会社名
-    // headerRow+1（3行目）: 便・部署名（空白の場合もある）
     const vendorSubRow = data[headerRowIndex + 1] || [];
-
-    // 各列のインデックス → { customer_name, dept_name, display_name } のマップを作成
     const vendorCols: { colIndex: number; customerName: string; deptName: string; displayName: string }[] = [];
-
     let lastSeenCustomerName = '';
 
     for (let colIdx = 3; colIdx < totalAmountColIndex; colIdx++) {
       let customerName = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
       
-      // もしセルの値がない場合、このセルがExcel上で「結合（マージ）されている」ことによる空白か判定する
       if (!customerName && merges.length > 0) {
-        // 現在見ているセルの座標 (行: headerRowIndex, 列: colIdx)
         for (const merge of merges) {
-          const { s, e } = merge; // s: start, e: end
+          const { s, e } = merge;
           if (headerRowIndex >= s.r && headerRowIndex <= e.r && colIdx >= s.c && colIdx <= e.c) {
-            // マージ範囲内に含まれている場合、親セル（範囲の左上 = s.r, s.c）の値を引き継ぐ
             customerName = data[s.r] && data[s.r][s.c] ? String(data[s.r][s.c]).trim() : '';
             break;
           }
         }
       }
 
-      // マージ情報がない、またはマージを読み取れなかった場合でも、直前の列の会社名を引き継ぐ（Excelで単に空白にしているケース対応）
       if (!customerName && lastSeenCustomerName) {
         customerName = lastSeenCustomerName;
       } else if (customerName) {
         lastSeenCustomerName = customerName;
       }
 
-      if (!customerName) continue; // 先頭の不要な空白列などは無視する
+      if (!customerName) continue;
 
       const deptName = vendorSubRow[colIdx] ? String(vendorSubRow[colIdx]).trim() : '';
-      const displayName = customerName + (deptName ? ` ${deptName}` : ''); // 便名がある場合は見やすく「高島屋 1便」のように空白を空ける
+      const displayName = customerName + (deptName ? ` ${deptName}` : '');
       vendorCols.push({ colIndex: colIdx, customerName, deptName, displayName });
     }
 
@@ -151,30 +209,26 @@ export default function OrderImportPage() {
       const row = data[rowIndex];
       if (!row) continue;
 
-      const productKey = row[1];  // 2列目 (index 1): 商品コード (product_code)
-      const productName = row[2]; // 3列目 (index 2): 商品名
+      const productKey = row[1];
+      const productName = row[2];
       const totalAmountObj = row[totalAmountColIndex];
       
       const isProductKeyBlank = !productKey || String(productKey).trim() === '';
       const isTotalAmountBlank = totalAmountObj === undefined || totalAmountObj === null || String(totalAmountObj).trim() === '';
 
-      // 完全な空行はスキップ
       if (isProductKeyBlank && isTotalAmountBlank && (!productName || String(productName).trim() === '')) {
          continue;
       }
 
-      // 「total」などの集計行もスキップする
       if (String(productKey).toLowerCase() === 'total' || (productName && String(productName).includes('合計'))) {
         continue;
       }
 
-      // エラーチェック1: product_codeが空白なのにtotal_amountが書かれている
       if (isProductKeyBlank && !isTotalAmountBlank) {
          errors.push(`${rowIndex + 1}行目: product_codeが空白ですが、total_amount（${totalAmountObj}）が入力されています。`);
          continue;
       }
 
-      // エラーチェック2: total_amountが0ではなく空白
       if (!isProductKeyBlank && isTotalAmountBlank) {
          const pName = productName ? String(productName).trim() : '不明な商品';
          errors.push(`${rowIndex + 1}行目: [${pName}] のtotal_amountが空白です。（0の場合は0と入力してください）`);
@@ -182,7 +236,6 @@ export default function OrderImportPage() {
       }
 
       if (!isProductKeyBlank && !isTotalAmountBlank) {
-        // 数値チェック
         const amt = Number(totalAmountObj);
         if (isNaN(amt)) {
            errors.push(`${rowIndex + 1}行目: total_amount（${totalAmountObj}）が数値ではありません。`);
@@ -191,7 +244,6 @@ export default function OrderImportPage() {
 
         const pKeyStr = String(productKey).trim();
 
-        // 合計行を extracted に追加（既存動作と変わらず）
         extracted.push({
           customerName: '全体合計',
           deliveryShift: '',
@@ -201,12 +253,11 @@ export default function OrderImportPage() {
           orderDate: orderDate
         });
 
-        // ─── 発注元ごとの内訳を抽出（新機能） ───
         for (const vc of vendorCols) {
           const rawQty = row[vc.colIndex];
           if (rawQty === undefined || rawQty === null || String(rawQty).trim() === '') continue;
           const qty = Number(rawQty);
-          if (isNaN(qty) || qty <= 0) continue; // 0個以下はスキップ
+          if (isNaN(qty) || qty <= 0) continue;
 
           extractedBreakdowns.push({
             order_date: orderDate,
@@ -220,14 +271,7 @@ export default function OrderImportPage() {
       }
     }
 
-    if (errors.length > 0) {
-      setImportErrors(errors);
-      setParsedOrders([]);      // エラー時は保存させないためデータを空に
-      setParsedBreakdowns([]);
-    } else {
-      setParsedOrders(extracted);
-      setParsedBreakdowns(extractedBreakdowns);
-    }
+    return { extracted, extractedBreakdowns, errors };
   };
 
   // 最初の重複チェック処理を含む保存ハンドラ
@@ -261,7 +305,11 @@ export default function OrderImportPage() {
       }
       
       if (!checkRes.ok) {
-         alert(`エラー: ${checkResult.error || '不明なエラー'}\n${checkResult.details || ''}`);
+         if (checkResult.isSetError) {
+           alert(`❌ ${checkResult.error}`);
+         } else {
+           alert(`エラー: ${checkResult.error || '不明なエラー'}\n${checkResult.details || ''}`);
+         }
          setIsProcessing(false);
          return;
       }
@@ -335,6 +383,8 @@ export default function OrderImportPage() {
     }
   };
 
+  // カレンダー描画用ヘルパーは StatusCalendar コンポーネントに切り出しました
+
   return (
     <div className="flex flex-col gap-6 py-6">
       <div className="flex items-center justify-between">
@@ -361,17 +411,19 @@ export default function OrderImportPage() {
         </div>
       </div>
 
+      {!fileName && <StatusCalendar />}
+
       {fileName && (
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
           <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
             <h3 className="text-xl font-bold flex items-center gap-3 flex-wrap">
               <span>読み込み結果:</span>
               <span className="text-amber-600">{fileName}</span>
-              {parsedOrders.length > 0 && typeof parsedOrders[0].orderDate === 'string' && (
-                <span className="bg-amber-100 text-amber-800 text-base px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
-                  <span>📅</span>対象日: {parsedOrders[0].orderDate.split('-').slice(1).join('月')}日
+              {parsedOrders.length > 0 && Array.from(new Set(parsedOrders.map(o => o.orderDate))).map((d, i) => (
+                <span key={i} className="bg-amber-100 text-amber-800 text-base px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
+                  <span>📅</span>対象日: {d.split('-').slice(1).join('月')}日
                 </span>
-              )}
+              ))}
             </h3>
             {importErrors.length === 0 && (
               <span className="text-lg bg-green-100 text-green-800 px-4 py-1 rounded-full font-bold whitespace-nowrap">
@@ -379,6 +431,19 @@ export default function OrderImportPage() {
               </span>
             )}
           </div>
+          
+          {importWarnings.length > 0 && importErrors.length === 0 && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl mb-4">
+              <h4 className="font-bold text-amber-800 flex items-center gap-2 mb-2">
+                <span>⚠️</span> 一部のシートが無視されました
+              </h4>
+              <ul className="list-disc list-inside space-y-1 text-amber-700 text-sm">
+                {importWarnings.map((warn, idx) => (
+                  <li key={idx}>{warn}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           
           {importErrors.length > 0 ? (
             <div className="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-xl mb-8">

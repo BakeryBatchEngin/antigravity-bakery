@@ -91,8 +91,12 @@ export async function POST(request: Request) {
       // 内訳が空でも正常終了（内訳なしのオーダーもある）
       return NextResponse.json({ success: true, count: 0 });
     }
-
-    const orderDate = breakdowns[0].order_date;
+    
+    // 含まれる全ての日付を抽出
+    const uniqueDates = Array.from(new Set(breakdowns.map((b: any) => b.order_date).filter(Boolean))) as string[];
+    if (uniqueDates.length === 0) {
+      return NextResponse.json({ error: '日付データが含まれていません' }, { status: 400 });
+    }
 
     // ===== 関所ロジック：セッションと店舗権限をチェックする =====
     const cookieStore = await cookies();
@@ -135,7 +139,8 @@ export async function POST(request: Request) {
 
     // replace モードの場合は同じ日付の内訳を全消去
     if (mode === 'replace') {
-      await db.run('DELETE FROM order_breakdowns WHERE store_id = ? AND order_date = ?', [storeId, orderDate]);
+      const placeholders = uniqueDates.map(() => '?').join(',');
+      await db.run(`DELETE FROM order_breakdowns WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
     }
 
     let count = 0;

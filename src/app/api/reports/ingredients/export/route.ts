@@ -25,6 +25,7 @@ export async function GET(request: Request) {
         u.ingredient_code, 
         u.ingredient_name, 
         u.used_weight_grams,
+        u.created_at,
         i.purchase_weight,
         i.purchase_price
       FROM ingredient_usages u
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     // 2. 月間データ集計 (水を除外)
     const monthlyTotalsMap = new Map();
     usages.forEach((u: any) => {
-      if (u.ingredient_name === '水') return;
+      if (u.ingredient_name === '水' || u.ingredient_code === '__NO_INGREDIENTS__') return;
       if (!monthlyTotalsMap.has(u.ingredient_code)) {
         monthlyTotalsMap.set(u.ingredient_code, {
            code: u.ingredient_code,
@@ -246,13 +247,19 @@ export async function GET(request: Request) {
           }
           const totalWeightGrams = batchUsages.reduce((sum: number, u: any) => sum + u.used_weight_grams, 0);
 
-          // Orange Row (バッチタイトル)
           const batchHeader = sheet.addRow([`${batchInfo.doughName}${batchInfo.batchNumber}回目`, '総生地量', totalWeightGrams / 1000]);
           for (let c = 1; c <= 3; c++) batchHeader.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } };
           batchHeader.font = { bold: true };
           batchHeader.getCell(3).numFmt = '#,##0.00" kg"';
           batchHeader.getCell(3).alignment = { horizontal: 'right' };
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
+          
+          if (batchUsages.length > 0 && batchUsages[0].created_at) {
+             const d = new Date(batchUsages[0].created_at);
+             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+             batchHeader.getCell(4).value = `実行済 (${timeStr})`;
+             batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+          }
 
           // Light Blue Header (列タイトル)
           const colsHeader = sheet.addRow(['材料名', '使用量(g)', '原材料費(円)']);
@@ -261,7 +268,8 @@ export async function GET(request: Request) {
           for (let c = 1; c <= 3; c++) colsHeader.getCell(c).border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} };
 
           // Items
-          batchUsages.forEach((u: any, idx: number) => {
+          const filteredUsages = batchUsages.filter((u:any) => u.ingredient_code !== '__NO_INGREDIENTS__');
+          filteredUsages.forEach((u: any, idx: number) => {
              let cost: string | number = '-';
              if (u.purchase_weight && u.purchase_price) {
                cost = Math.round(u.used_weight_grams * (u.purchase_price / u.purchase_weight));
@@ -298,13 +306,19 @@ export async function GET(request: Request) {
              };
           }
           
-          // Green Row
           const batchHeader = sheet.addRow([`${batchInfo.productName}${batchInfo.batchNumber}回目`, '仕込み個数', batchInfo.currentBatchQuantity]);
           for (let c = 1; c <= 3; c++) batchHeader.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
           batchHeader.font = { bold: true };
           batchHeader.getCell(3).numFmt = '#,##0';
           batchHeader.getCell(3).alignment = { horizontal: 'right' };
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
+          
+          if (batchUsages.length > 0 && batchUsages[0].created_at) {
+             const d = new Date(batchUsages[0].created_at);
+             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+             batchHeader.getCell(4).value = `実行済 (${timeStr})`;
+             batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+          }
 
           // Light Blue Header
           const colsHeader = sheet.addRow(['材料名', '使用量(g)', '原材料費(円)']);
@@ -331,7 +345,8 @@ export async function GET(request: Request) {
           }
 
           // 副材料リストを挿入
-          batchUsages.forEach((u: any) => {
+          const filteredUsages = batchUsages.filter((u:any) => u.ingredient_code !== '__NO_INGREDIENTS__');
+          filteredUsages.forEach((u: any) => {
              let cost: string | number = '-';
              if (u.purchase_weight && u.purchase_price) {
                cost = Math.round(u.used_weight_grams * (u.purchase_price / u.purchase_weight));
