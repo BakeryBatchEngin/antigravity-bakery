@@ -4,6 +4,33 @@ import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 import { GET as getProductionPlan } from '@/app/api/production/route';
 
+function formatJST(rawDate: any): string {
+  if (!rawDate) return '';
+  let d: Date;
+  if (rawDate instanceof Date) {
+    // pg driver parses TIMESTAMP WITHOUT TIME ZONE as local time.
+    // By subtracting the timezone offset, we reconstruct the actual UTC time that was in the DB string.
+    const offsetMs = rawDate.getTimezoneOffset() * 60 * 1000;
+    d = new Date(rawDate.getTime() - offsetMs);
+  } else if (typeof rawDate === 'string') {
+    d = new Date(rawDate + (rawDate.includes('Z') ? '' : 'Z'));
+  } else {
+    return '';
+  }
+  
+  if (isNaN(d.getTime())) return '';
+  
+  // Convert UTC absolute time to JST (+9 hours)
+  const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const m = jstDate.getUTCMonth() + 1;
+  const day = jstDate.getUTCDate();
+  const w = ['日', '月', '火', '水', '木', '金', '土'][jstDate.getUTCDay()];
+  const hh = jstDate.getUTCHours().toString().padStart(2, '0');
+  const mm = jstDate.getUTCMinutes().toString().padStart(2, '0');
+  
+  return `${m}月${day}日（${w}） ${hh}:${mm}`;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -255,16 +282,9 @@ export async function GET(request: Request) {
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
           
           if (batchUsages.length > 0 && batchUsages[0].created_at) {
-             const createdStr = batchUsages[0].created_at;
-             const d = new Date(createdStr + (createdStr.includes('Z') ? '' : 'Z'));
-             if (!isNaN(d.getTime())) {
-               const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-               const m = jstDate.getUTCMonth() + 1;
-               const day = jstDate.getUTCDate();
-               const w = ['日', '月', '火', '水', '木', '金', '土'][jstDate.getUTCDay()];
-               const hh = jstDate.getUTCHours().toString().padStart(2, '0');
-               const mm = jstDate.getUTCMinutes().toString().padStart(2, '0');
-               batchHeader.getCell(4).value = `実行済 (${m}月${day}日（${w}） ${hh}:${mm})`;
+             const timeStr = formatJST(batchUsages[0].created_at);
+             if (timeStr) {
+               batchHeader.getCell(4).value = `実行済 (${timeStr})`;
                batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
              }
           }
@@ -322,16 +342,9 @@ export async function GET(request: Request) {
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
           
           if (batchUsages.length > 0 && batchUsages[0].created_at) {
-             const createdStr = batchUsages[0].created_at;
-             const d = new Date(createdStr + (createdStr.includes('Z') ? '' : 'Z'));
-             if (!isNaN(d.getTime())) {
-               const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-               const m = jstDate.getUTCMonth() + 1;
-               const day = jstDate.getUTCDate();
-               const w = ['日', '月', '火', '水', '木', '金', '土'][jstDate.getUTCDay()];
-               const hh = jstDate.getUTCHours().toString().padStart(2, '0');
-               const mm = jstDate.getUTCMinutes().toString().padStart(2, '0');
-               batchHeader.getCell(4).value = `実行済 (${m}月${day}日（${w}） ${hh}:${mm})`;
+             const timeStr = formatJST(batchUsages[0].created_at);
+             if (timeStr) {
+               batchHeader.getCell(4).value = `実行済 (${timeStr})`;
                batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
              }
           }
