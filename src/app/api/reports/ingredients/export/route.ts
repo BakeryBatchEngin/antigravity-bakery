@@ -255,10 +255,18 @@ export async function GET(request: Request) {
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
           
           if (batchUsages.length > 0 && batchUsages[0].created_at) {
-             const d = new Date(batchUsages[0].created_at);
-             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-             batchHeader.getCell(4).value = `実行済 (${timeStr})`;
-             batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+             const createdStr = batchUsages[0].created_at;
+             const d = new Date(createdStr + (createdStr.includes('Z') ? '' : 'Z'));
+             if (!isNaN(d.getTime())) {
+               const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+               const m = jstDate.getUTCMonth() + 1;
+               const day = jstDate.getUTCDate();
+               const w = ['日', '月', '火', '水', '木', '金', '土'][jstDate.getUTCDay()];
+               const hh = jstDate.getUTCHours().toString().padStart(2, '0');
+               const mm = jstDate.getUTCMinutes().toString().padStart(2, '0');
+               batchHeader.getCell(4).value = `実行済 (${m}月${day}日（${w}） ${hh}:${mm})`;
+               batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+             }
           }
 
           // Light Blue Header (列タイトル)
@@ -314,10 +322,18 @@ export async function GET(request: Request) {
           batchHeader.getCell(2).alignment = { horizontal: 'right' };
           
           if (batchUsages.length > 0 && batchUsages[0].created_at) {
-             const d = new Date(batchUsages[0].created_at);
-             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-             batchHeader.getCell(4).value = `実行済 (${timeStr})`;
-             batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+             const createdStr = batchUsages[0].created_at;
+             const d = new Date(createdStr + (createdStr.includes('Z') ? '' : 'Z'));
+             if (!isNaN(d.getTime())) {
+               const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+               const m = jstDate.getUTCMonth() + 1;
+               const day = jstDate.getUTCDate();
+               const w = ['日', '月', '火', '水', '木', '金', '土'][jstDate.getUTCDay()];
+               const hh = jstDate.getUTCHours().toString().padStart(2, '0');
+               const mm = jstDate.getUTCMinutes().toString().padStart(2, '0');
+               batchHeader.getCell(4).value = `実行済 (${m}月${day}日（${w}） ${hh}:${mm})`;
+               batchHeader.getCell(4).font = { color: { argb: 'FF16A34A' }, bold: true, size: 10 };
+             }
           }
 
           // Light Blue Header

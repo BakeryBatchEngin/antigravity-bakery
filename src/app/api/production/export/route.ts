@@ -79,8 +79,14 @@ export async function GET(request: Request) {
           const d = new Date(row.created_at + 'Z'); // UTCとしてパース（Supabaseの文字列フォーマットに依存）
           // 万が一 Invalid Date などを防ぐ
           if (!isNaN(d.getTime())) {
-            // 'ja-JP'ロケールで年月日時分を指定 (例: "2026/05/07 14:35")
-            const timeStr = d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            // 'M月D日（曜） HH:mm'形式にする
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+            const hh = d.getHours().toString().padStart(2, '0');
+            const mm = d.getMinutes().toString().padStart(2, '0');
+            const timeStr = `${m}月${day}日（${w}） ${hh}:${mm}`;
+            
             if (!doneTimeMap[row.batch_id]) {
               doneTimeMap[row.batch_id] = {};
             }
@@ -99,13 +105,14 @@ export async function GET(request: Request) {
     // =====================================
     const sheet1 = workbook.addWorksheet('生地仕込み詳細', { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } } });
     sheet1.getColumn(1).width = 25; // 材料名
-    sheet1.getColumn(2).width = 15; // 指(%)/個数
-    sheet1.getColumn(3).width = 20; // 計量(g)
-    sheet1.getColumn(4).width = 20; // 計量日時
+    sheet1.getColumn(2).width = 20; // 材料使用期限
+    sheet1.getColumn(3).width = 15; // 指(%)/個数
+    sheet1.getColumn(4).width = 20; // 計量(g)
+    sheet1.getColumn(5).width = 25; // 計量日時
 
     // タイトル
-    const titleRow1 = sheet1.addRow([`【生地仕込み詳細】対象日: ${date}`, '', '', '']);
-    sheet1.mergeCells('A1:D1');
+    const titleRow1 = sheet1.addRow([`【生地仕込み詳細】対象日: ${date}`, '', '', '', '']);
+    sheet1.mergeCells('A1:E1');
     titleRow1.font = { size: 16, bold: true };
     sheet1.addRow([]);
 
@@ -119,31 +126,32 @@ export async function GET(request: Request) {
       const batchTitleRow = sheet1.addRow([
         `${batch.doughName} (${batch.doughCode}) - ${batch.batchNumber}回目`, 
         '', 
+        '', 
         `粉量: ${(currentFlourWeightGrams / 1000).toFixed(2)}kg`, 
         `目安: ${(currentTotalWeightGrams / 1000).toFixed(2)}kg`
       ]);
-      sheet1.mergeCells(`A${batchTitleRow.number}:B${batchTitleRow.number}`);
+      sheet1.mergeCells(`A${batchTitleRow.number}:C${batchTitleRow.number}`);
       
       batchTitleRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
       batchTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF59E0B' } }; // Amber 500
-      batchTitleRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCD34D' } }; // Amber 300
-      batchTitleRow.getCell(3).font = { bold: true, color: { argb: 'FF92400E' } }; // Amber 900
-      batchTitleRow.getCell(3).alignment = { horizontal: 'right' };
-      batchTitleRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }; // Amber 200
-      batchTitleRow.getCell(4).font = { bold: true, color: { argb: 'FF92400E' } }; 
+      batchTitleRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCD34D' } }; // Amber 300
+      batchTitleRow.getCell(4).font = { bold: true, color: { argb: 'FF92400E' } }; // Amber 900
       batchTitleRow.getCell(4).alignment = { horizontal: 'right' };
+      batchTitleRow.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }; // Amber 200
+      batchTitleRow.getCell(5).font = { bold: true, color: { argb: 'FF92400E' } }; 
+      batchTitleRow.getCell(5).alignment = { horizontal: 'right' };
       
-      for(let i=1; i<=4; i++) {
+      for(let i=1; i<=5; i++) {
          batchTitleRow.getCell(i).border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
       }
 
       // ヘッダー行
-      const headerRow = sheet1.addRow(['材料名', '指定(%)', '計量 (g)', '計量日時']);
+      const headerRow = sheet1.addRow(['材料名', '材料使用期限', '指定(%)', '計量 (g)', '計量日時']);
       headerRow.font = { bold: true };
       headerRow.eachCell((cell, colNum) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Slate 100
         cell.border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
-        if(colNum !== 1) cell.alignment = { horizontal: 'center' };
+        if(colNum !== 1 && colNum !== 2) cell.alignment = { horizontal: 'center' };
       });
 
       // 材料リスト
@@ -159,30 +167,31 @@ export async function GET(request: Request) {
 
           const row = sheet1.addRow([
             ing.ingredientName,
+            '', // 材料使用期限を手書きするための空欄
             `${ing.bakersPercent}%`,
             reqW,
             doneTime
           ]);
           
-          row.getCell(3).numFmt = '#,##0.##" g"';
+          row.getCell(4).numFmt = '#,##0.##" g"';
           
           // Styling
           const isOdd = idx % 2 === 1;
-          for (let c = 1; c <= 4; c++) {
+          for (let c = 1; c <= 5; c++) {
             const cell = row.getCell(c);
             cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
             if (isOdd) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            if (c > 1) cell.alignment = { horizontal: 'center' };
-            if (c === 3) cell.font = { bold: true, size: 12, color: { argb: 'FFD97706' } }; // Amber 600
+            if (c > 2) cell.alignment = { horizontal: 'center' };
+            if (c === 4) cell.font = { bold: true, size: 12, color: { argb: 'FFD97706' } }; // Amber 600
           }
         }
       } else {
          const doneTime = doneTimeMap[batch.id]?.['__NO_INGREDIENTS__'] || '';
-         const row = sheet1.addRow(['(材料なし)', '-', '-', doneTime]);
+         const row = sheet1.addRow(['(材料なし)', '', '-', '-', doneTime]);
          row.getCell(1).font = { italic: true, color: { argb: 'FF888888' } };
-         for (let c = 1; c <= 4; c++) {
+         for (let c = 1; c <= 5; c++) {
             row.getCell(c).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
-            if (c > 1) row.getCell(c).alignment = { horizontal: 'center' };
+            if (c > 2) row.getCell(c).alignment = { horizontal: 'center' };
          }
       }
       
@@ -195,12 +204,13 @@ export async function GET(request: Request) {
     // =====================================
     const sheet2 = workbook.addWorksheet('全商品詳細', { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } } });
     sheet2.getColumn(1).width = 25; // 材料・生地名
-    sheet2.getColumn(2).width = 15; // (空白・使用数)
-    sheet2.getColumn(3).width = 20; // グラム数
-    sheet2.getColumn(4).width = 20; // 計量日時
+    sheet2.getColumn(2).width = 20; // 材料使用期限
+    sheet2.getColumn(3).width = 15; // (空白・使用数)
+    sheet2.getColumn(4).width = 20; // グラム数
+    sheet2.getColumn(5).width = 25; // 計量日時
 
-    const titleRow2 = sheet2.addRow([`【本日の全商品仕込み】対象日: ${date}`, '', '', '']);
-    sheet2.mergeCells('A1:D1');
+    const titleRow2 = sheet2.addRow([`【本日の全商品仕込み】対象日: ${date}`, '', '', '', '']);
+    sheet2.mergeCells('A1:E1');
     titleRow2.font = { size: 16, bold: true };
     sheet2.addRow([]);
 
@@ -215,28 +225,29 @@ export async function GET(request: Request) {
       const batchTitleRow = sheet2.addRow([
         `${batch.productName} (${batch.productCode}) - ${batch.batchNumber}回目`, 
         '', 
+        '', 
         `仕込数: ${currentQty}個`,
         ''
       ]);
-      sheet2.mergeCells(`A${batchTitleRow.number}:B${batchTitleRow.number}`);
+      sheet2.mergeCells(`A${batchTitleRow.number}:C${batchTitleRow.number}`);
       
       batchTitleRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
       batchTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; // Emerald 500
-      batchTitleRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6EE7B7' } }; // Emerald 300
-      batchTitleRow.getCell(3).font = { bold: true, color: { argb: 'FF065F46' } }; // Emerald 900
-      batchTitleRow.getCell(3).alignment = { horizontal: 'right' };
+      batchTitleRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6EE7B7' } }; // Emerald 300
+      batchTitleRow.getCell(4).font = { bold: true, color: { argb: 'FF065F46' } }; // Emerald 900
+      batchTitleRow.getCell(4).alignment = { horizontal: 'right' };
       
-      for(let i=1; i<=4; i++) {
+      for(let i=1; i<=5; i++) {
          batchTitleRow.getCell(i).border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
       }
 
       // ヘッダー行
-      const headerRow2 = sheet2.addRow(['材料（生地・副材料）', '', '総計量 (g)', '計量日時']);
+      const headerRow2 = sheet2.addRow(['材料（生地・副材料）', '材料使用期限', '', '総計量 (g)', '計量日時']);
       headerRow2.font = { bold: true };
       headerRow2.eachCell((cell, colNum) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; 
         cell.border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
-        if(colNum !== 1) cell.alignment = { horizontal: 'center' };
+        if(colNum !== 1 && colNum !== 2) cell.alignment = { horizontal: 'center' };
       });
 
       let lineIdx = 0;
@@ -244,12 +255,12 @@ export async function GET(request: Request) {
       // 生地を最初の行として出力
       if (batch.doughName && currentDoughWeight > 0) {
          // アプリ側の仕様では「生地」自体の完了チェックはないため空欄にします
-         const dRow = sheet2.addRow([ `${batch.doughName} (生地)`, '', currentDoughWeight, '' ]);
+         const dRow = sheet2.addRow([ `${batch.doughName} (生地)`, '', '', currentDoughWeight, '' ]);
          dRow.getCell(1).font = { bold: true, color: { argb: 'FFB45309' } }; // Amber 700
-         dRow.getCell(3).numFmt = '#,##0.##" g"';
-         dRow.getCell(3).alignment = { horizontal: 'center' };
-         dRow.getCell(3).font = { bold: true, size: 12, color: { argb: 'FFB45309' } };
-         for (let c = 1; c <= 4; c++) {
+         dRow.getCell(4).numFmt = '#,##0.##" g"';
+         dRow.getCell(4).alignment = { horizontal: 'center' };
+         dRow.getCell(4).font = { bold: true, size: 12, color: { argb: 'FFB45309' } };
+         for (let c = 1; c <= 5; c++) {
             dRow.getCell(c).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
          }
          lineIdx++;
@@ -266,31 +277,32 @@ export async function GET(request: Request) {
 
           const row = sheet2.addRow([
             ing.ingredientName,
+            '', // 材料使用期限
             '',
             reqWeight,
             doneTime
           ]);
           
-          row.getCell(3).numFmt = '#,##0.##" g"';
+          row.getCell(4).numFmt = '#,##0.##" g"';
           
           // Styling
           const isOdd = lineIdx % 2 === 1;
-          for (let c = 1; c <= 4; c++) {
+          for (let c = 1; c <= 5; c++) {
             const cell = row.getCell(c);
             cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
             if (isOdd) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            if (c > 1) cell.alignment = { horizontal: 'center' };
-            if (c === 3) cell.font = { bold: true, size: 12, color: { argb: 'FFD97706' } };
+            if (c > 2) cell.alignment = { horizontal: 'center' };
+            if (c === 4) cell.font = { bold: true, size: 12, color: { argb: 'FFD97706' } };
           }
           lineIdx++;
         }
       } else {
          const doneTime = doneTimeMap[batch.id]?.['__NO_INGREDIENTS__'] || '';
-         const row = sheet2.addRow(['(副材料なし)', '', '-', doneTime]);
+         const row = sheet2.addRow(['(副材料なし)', '', '', '-', doneTime]);
          row.getCell(1).font = { italic: true, color: { argb: 'FF888888' } };
-         for (let c = 1; c <= 4; c++) {
+         for (let c = 1; c <= 5; c++) {
             row.getCell(c).border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
-            if (c > 1) row.getCell(c).alignment = { horizontal: 'center' };
+            if (c > 2) row.getCell(c).alignment = { horizontal: 'center' };
          }
       }
 
