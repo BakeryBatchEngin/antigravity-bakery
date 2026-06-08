@@ -137,47 +137,50 @@ export async function POST(request: Request) {
     if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
     // ===== 関所ここまで =====
 
-    // replace モードの場合は同じ日付の内訳を全消去
-    if (mode === 'replace') {
-      const placeholders = uniqueDates.map(() => '?').join(',');
-      await db.run(`DELETE FROM order_breakdowns WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
-    }
-
     let count = 0;
-    for (const bd of breakdowns) {
-      if (mode === 'append') {
-        const existing = await db.get(
-          `SELECT id, quantity FROM order_breakdowns
-           WHERE store_id = ? AND order_date = ? AND product_code = ? AND display_name = ?`,
-          [storeId, bd.order_date, bd.product_code, bd.display_name]
-        );
 
-        if (existing) {
-          await db.run(
-            `UPDATE order_breakdowns SET quantity = quantity + ? WHERE id = ?`,
-            [bd.quantity, existing.id]
-          );
-          count++;
-          continue; // UPDATEしたのでINSERTはスキップ
-        }
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      // replace モードの場合は同じ日付の内訳を全消去
+      if (mode === 'replace') {
+        const placeholders = uniqueDates.map(() => '?').join(',');
+        await txDb.run(`DELETE FROM order_breakdowns WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
       }
 
-      await db.run(
-        `INSERT INTO order_breakdowns
-           (store_id, order_date, product_code, customer_name, dept_name, display_name, quantity)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          storeId,
-          bd.order_date,
-          bd.product_code,
-          bd.customer_name,
-          bd.dept_name,
-          bd.display_name,
-          bd.quantity,
-        ]
-      );
-      count++;
-    }
+      for (const bd of breakdowns) {
+        if (mode === 'append') {
+          const existing = await txDb.get(
+            `SELECT id, quantity FROM order_breakdowns
+             WHERE store_id = ? AND order_date = ? AND product_code = ? AND display_name = ?`,
+            [storeId, bd.order_date, bd.product_code, bd.display_name]
+          );
+
+          if (existing) {
+            await txDb.run(
+              `UPDATE order_breakdowns SET quantity = quantity + ? WHERE id = ?`,
+              [bd.quantity, existing.id]
+            );
+            count++;
+            continue; // UPDATEしたのでINSERTはスキップ
+          }
+        }
+
+        await txDb.run(
+          `INSERT INTO order_breakdowns
+             (store_id, order_date, product_code, customer_name, dept_name, display_name, quantity)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            storeId,
+            bd.order_date,
+            bd.product_code,
+            bd.customer_name,
+            bd.dept_name,
+            bd.display_name,
+            bd.quantity,
+          ]
+        );
+        count++;
+      }
+    });
 
     return NextResponse.json({ success: true, count });
   } catch (error: any) {

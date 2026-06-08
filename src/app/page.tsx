@@ -18,6 +18,10 @@ export default function Home() {
         const res = await fetch('/api/auth/me');
         const data = await res.json();
         if (data.user) {
+          if (data.user.role === 'super_admin') {
+            window.location.href = '/super-admin';
+            return; // リダイレクト完了まで Loading 状態を維持するため、setLoading(false) を呼ばない
+          }
           setUser(data.user);
           if (data.activeStoreId !== undefined) setActiveStoreId(data.activeStoreId);
         } else {

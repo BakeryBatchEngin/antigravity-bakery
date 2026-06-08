@@ -55,9 +55,8 @@ export function middleware(request: NextRequest) {
       throw new Error("Invalid session data");
     }
 
-    // パスベースの権限チェック
-    // admin はどこでもアクセス可
-    if (role === 'admin') {
+    // admin と super_admin はどこでもアクセス可
+    if (role === 'admin' || role === 'super_admin') {
       return NextResponse.next();
     }
 

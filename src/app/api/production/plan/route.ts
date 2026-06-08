@@ -52,28 +52,30 @@ export async function POST(request: Request) {
     }
     const planData = JSON.stringify({ flatBatches, flatProductBatches });
 
-    await db.run(`
-      INSERT INTO daily_production_plans (store_id, target_date, plan_data)
-      VALUES (?, ?, ?)
-      ON CONFLICT(target_date, store_id) DO UPDATE SET
-        plan_data=excluded.plan_data,
-        updated_at=CURRENT_TIMESTAMP
-    `, [storeId, date, planData]);
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      await txDb.run(`
+        INSERT INTO daily_production_plans (store_id, target_date, plan_data)
+        VALUES (?, ?, ?)
+        ON CONFLICT(target_date, store_id) DO UPDATE SET
+          plan_data=excluded.plan_data,
+          updated_at=CURRENT_TIMESTAMP
+      `, [storeId, date, planData]);
 
-    const validBatchIds = [
-      ...(flatBatches || []).map((b: any) => b.id),
-      ...(flatProductBatches || []).map((b: any) => b.id)
-    ];
+      const validBatchIds = [
+        ...(flatBatches || []).map((b: any) => b.id),
+        ...(flatProductBatches || []).map((b: any) => b.id)
+      ];
 
-    if (validBatchIds.length > 0) {
-      const placeholders = validBatchIds.map(() => '?').join(',');
-      await db.run(`
-        DELETE FROM ingredient_usages 
-        WHERE store_id = ? AND target_date = ? AND batch_id NOT IN (${placeholders})
-      `, [storeId, date, ...validBatchIds]);
-    } else {
-      await db.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ?', [storeId, date]);
-    }
+      if (validBatchIds.length > 0) {
+        const placeholders = validBatchIds.map(() => '?').join(',');
+        await txDb.run(`
+          DELETE FROM ingredient_usages 
+          WHERE store_id = ? AND target_date = ? AND batch_id NOT IN (${placeholders})
+        `, [storeId, date, ...validBatchIds]);
+      } else {
+        await txDb.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ?', [storeId, date]);
+      }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -131,11 +133,13 @@ export async function DELETE(request: Request) {
     if (!storeId) {
       return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
     }
-    await db.run('DELETE FROM daily_production_plans WHERE store_id = ? AND target_date = ?', [storeId, date]);
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      await txDb.run('DELETE FROM daily_production_plans WHERE store_id = ? AND target_date = ?', [storeId, date]);
 
-    // リセット時は一緒にその日の実行記録も消すか？
-    // ユーザーが明示的にリセットを押した場合は一旦計画全体を初期化するので、実行記録も消す。
-    await db.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ?', [storeId, date]);
+      // リセット時は一緒にその日の実行記録も消すか？
+      // ユーザーが明示的にリセットを押した場合は一旦計画全体を初期化するので、実行記録も消す。
+      await txDb.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ?', [storeId, date]);
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

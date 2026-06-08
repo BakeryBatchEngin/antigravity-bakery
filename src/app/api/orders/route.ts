@@ -134,47 +134,50 @@ export async function POST(request: Request) {
       return NextResponse.json({ exists: row.count > 0 });
     }
 
-    // モード: replace（同一日付のオーダーをすべて削除してから追加）
-    if (mode === 'replace') {
-      const placeholders = uniqueDates.map(() => '?').join(',');
-      await db.run(`DELETE FROM orders WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
-    }
-
     let insertedCount = 0;
     let updatedCount = 0;
 
-    for (const order of orders) {
-      const dateToSave = order.orderDate || uniqueDates[0];
-      const storeName = order.customerName || '不明な店舗';
-      const deliveryShift = order.deliveryShift !== undefined ? order.deliveryShift : '';
-      const productCode = order.productKey || '';
-      const productName = order.productName || '';
-      const quantity = Number(order.quantity) || 0;
-
-      // モード: append の場合は、すでに同じ店舗・便・商品のものがあるか確認し、あれば加算する
-      if (mode === 'append') {
-        const existing = await db.get(
-          'SELECT id, quantity FROM orders WHERE store_id = ? AND order_date = ? AND store_name = ? AND delivery_shift = ? AND product_code = ?',
-          [storeId, dateToSave, storeName, deliveryShift, productCode]
-        );
-
-        if (existing) {
-          await db.run(
-            'UPDATE orders SET quantity = quantity + ? WHERE id = ?',
-            [quantity, existing.id]
-          );
-          updatedCount++;
-          continue; // すでに更新したため、INSERTはスキップ
-        }
+    // トランザクションを開始し、セッションに user_id, store_id, role を記録する（監査ログとRLS用）
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      // モード: replace（同一日付のオーダーをすべて削除してから追加）
+      if (mode === 'replace') {
+        const placeholders = uniqueDates.map(() => '?').join(',');
+        await txDb.run(`DELETE FROM orders WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
       }
 
-      // 存在しない、または replace モードの場合は新規INSERT
-      await db.run(
-        'INSERT INTO orders (store_id, order_date, store_name, delivery_shift, product_code, product_name, quantity) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [storeId, dateToSave, storeName, deliveryShift, productCode, productName, quantity]
-      );
-      insertedCount++;
-    }
+      for (const order of orders) {
+        const dateToSave = order.orderDate || uniqueDates[0];
+        const storeName = order.customerName || '不明な店舗';
+        const deliveryShift = order.deliveryShift !== undefined ? order.deliveryShift : '';
+        const productCode = order.productKey || '';
+        const productName = order.productName || '';
+        const quantity = Number(order.quantity) || 0;
+
+        // モード: append の場合は、すでに同じ店舗・便・商品のものがあるか確認し、あれば加算する
+        if (mode === 'append') {
+          const existing = await txDb.get(
+            'SELECT id, quantity FROM orders WHERE store_id = ? AND order_date = ? AND store_name = ? AND delivery_shift = ? AND product_code = ?',
+            [storeId, dateToSave, storeName, deliveryShift, productCode]
+          );
+
+          if (existing) {
+            await txDb.run(
+              'UPDATE orders SET quantity = quantity + ? WHERE id = ?',
+              [quantity, existing.id]
+            );
+            updatedCount++;
+            continue; // すでに更新したため、INSERTはスキップ
+          }
+        }
+
+        // 存在しない、または replace モードの場合は新規INSERT
+        await txDb.run(
+          'INSERT INTO orders (store_id, order_date, store_name, delivery_shift, product_code, product_name, quantity) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [storeId, dateToSave, storeName, deliveryShift, productCode, productName, quantity]
+        );
+        insertedCount++;
+      }
+    });
 
     const msg = mode === 'replace' 
       ? `${insertedCount}件の注文データを置き換えました` 

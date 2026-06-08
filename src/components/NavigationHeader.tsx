@@ -99,7 +99,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className="text-xs font-bold text-slate-400 mb-2">Ver. 2.11</span>
+          <span className="text-xs font-bold text-slate-400 mb-2">Ver. 2.20</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -127,8 +127,8 @@ export default function NavigationHeader() {
               </div>
             )}
 
-            {/* ===== シェフ向け：店舗表示UI（master/admin/manager は別の場所で管理）===== */}
-            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && (
+            {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin は別の場所で管理）===== */}
+            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && (
               <div className="hidden sm:flex items-center bg-slate-100 rounded-lg px-3 py-1.5 border border-slate-200">
                 <span className="text-xs font-bold text-slate-500 mr-2">📍 店舗:</span>
                 {(user.storeIds && user.storeIds.length > 1) ? (
@@ -149,6 +149,13 @@ export default function NavigationHeader() {
               </div>
             )}
 
+            {/* Super Admin 用バッジ */}
+            {role === 'super_admin' && (
+              <div className="hidden sm:flex items-center bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
+                <span className="text-xs font-bold text-indigo-700">👑 システム全体管理</span>
+              </div>
+            )}
+
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4">
               <div className="text-sm font-bold text-slate-700">{user.displayName}</div>
               <div className="text-xs text-slate-400 uppercase tracking-wider">{user.role} Mode</div>
@@ -163,9 +170,18 @@ export default function NavigationHeader() {
         )}
       </div>
 
-      {/* 管理者・マスタモード時のみ表示される追加ナビゲーションバー */}
-      {(role === 'master' || role === 'admin') && (
+      {/* 管理者・マスタモード・Super Admin時のみ表示される追加ナビゲーションバー */}
+      {(role === 'master' || role === 'admin' || role === 'super_admin') && (
         <div className="bg-slate-100 border-t border-slate-200 px-4 py-2 flex items-center gap-4 overflow-x-auto text-sm">
+          {role === 'super_admin' && (
+            <>
+              <span className="font-bold text-indigo-500 flex-shrink-0 mr-2">SaaS Management:</span>
+              <Link href="/super-admin" className="font-bold flex-shrink-0 text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md border border-indigo-100">
+                🚀 スーパー管理者ダッシュボードへ
+              </Link>
+            </>
+          )}
+
           {role === 'master' && (
             <>
               <span className="font-bold text-slate-500 flex-shrink-0 mr-2">Master Menu:</span>

@@ -57,6 +57,66 @@ class PgCompatibleDb {
     // プレースホルダは使われない前提のDDL実行など
     await getPool().query(sql);
   }
+
+  // 監査ログやRLS用のコンテキスト(ユーザーID等)をセットして、トランザクション内でクエリを実行するメソッド
+  // ※ RLSを機能させるために、スーパーユーザー権限を捨てて 'authenticated' ロールに切り替えます
+  async transactionWithUser(userId: number | null, storeId: number | null, role: string | null = null, callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      
+      // PostgreSQLのセッション変数にユーザーID、店舗ID、ロールをセットする
+      if (userId) {
+        await client.query(`SET LOCAL app.current_user_id = '${userId}'`);
+      } else {
+        await client.query(`SET LOCAL app.current_user_id = ''`);
+      }
+      
+      if (storeId) {
+        await client.query(`SET LOCAL app.current_store_id = '${storeId}'`);
+      } else {
+        await client.query(`SET LOCAL app.current_store_id = ''`);
+      }
+
+      if (role) {
+        await client.query(`SET LOCAL app.current_user_role = '${role}'`);
+      } else {
+        await client.query(`SET LOCAL app.current_user_role = ''`);
+      }
+
+      // RLS（Row Level Security）を機能させるため、一時的に一般ユーザー権限に切り替える
+      // （※ スーパーユーザー postgres のままだと RLS が無視されてしまうため）
+      await client.query(`SET LOCAL ROLE authenticated`);
+
+      // トランザクション専用の互換オブジェクトを作成
+      const txDb = {
+        get: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const { rows } = await client.query(pgSql, params);
+          return rows[0] || undefined;
+        },
+        all: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const { rows } = await client.query(pgSql, params);
+          return rows;
+        },
+        run: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const result = await client.query(pgSql, params);
+          return { changes: result.rowCount, lastID: 0 };
+        }
+      };
+
+      const result = await callback(txDb);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 // シングルトンインスタンス
@@ -225,7 +285,7 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'master', 'manager', 'chef')),
+      role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef')),
       pin_code TEXT,
       password TEXT, -- 簡易実装のため平文パスワード（本番ではハッシュ推奨）
       display_name TEXT NOT NULL,
@@ -238,6 +298,21 @@ export async function initDb() {
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       PRIMARY KEY (user_id, store_id)
+    );
+  `);
+
+  // 監査ログ用テーブルの追加
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      store_id INTEGER,
+      action TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      record_id TEXT,
+      old_data JSONB,
+      new_data JSONB,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 

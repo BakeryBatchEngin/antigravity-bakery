@@ -10,45 +10,44 @@ export async function POST(request: Request) {
     }
     
     const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('bakery_session');
+    if (!sessionCookie || !sessionCookie.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+    const user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+
     const storeCookie = cookieStore.get('active_store_id');
     const storeId = storeCookie ? Number(storeCookie.value) : null;
     if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
 
     const db = await getDb();
     
-    // SQLiteを使った安全な挿入（既存のデータを消さずに、存在しない場合のみ追加する）
-    await db.run('BEGIN TRANSACTION');
-    try {
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       if (ingredients.length === 0) {
-        const existing = await db.get(
+        const existing = await txDb.get(
           'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
           [storeId, date, batchId, '__NO_INGREDIENTS__']
         );
         if (!existing) {
-            await db.run(`
+            await txDb.run(`
                 INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
                 VALUES (?, ?, ?, ?, ?, ?)
             `, [storeId, date, batchId, '__NO_INGREDIENTS__', '副材料なし（実行済）', 0]);
         }
       } else {
         for (const ing of ingredients) {
-            const existing = await db.get(
+            const existing = await txDb.get(
               'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
               [storeId, date, batchId, ing.ingredientCode]
             );
             if (!existing) {
-                await db.run(`
+                await txDb.run(`
                     INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
                     VALUES (?, ?, ?, ?, ?, ?)
                 `, [storeId, date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
             }
         }
       }
-      await db.run('COMMIT');
-    } catch(err) {
-      await db.run('ROLLBACK');
-      throw err;
-    }
+    });
+    
     return NextResponse.json({ success: true });
   } catch(error) {
     console.error('Error executing batch:', error);
@@ -68,17 +67,23 @@ export async function DELETE(request: Request) {
     const ingredientCode = searchParams.get('ingredientCode');
     
     const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('bakery_session');
+    if (!sessionCookie || !sessionCookie.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+    const user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+
     const storeCookie = cookieStore.get('active_store_id');
     const storeId = storeCookie ? Number(storeCookie.value) : null;
     if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
 
     const db = await getDb();
     
-    if (ingredientCode) {
-      await db.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?', [storeId, date, batchId, ingredientCode]);
-    } else {
-      await db.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ?', [storeId, date, batchId]);
-    }
+    await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      if (ingredientCode) {
+        await txDb.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?', [storeId, date, batchId, ingredientCode]);
+      } else {
+        await txDb.run('DELETE FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ?', [storeId, date, batchId]);
+      }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

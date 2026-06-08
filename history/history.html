@@ -24,11 +24,64 @@
             <p class="text-slate-500 font-medium">Antigravity AI エージェントとの会話と実装プランの記録</p>
             <div class="mt-4 inline-flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full text-xs font-bold text-slate-500">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              最終更新: 2026/5/27 16:15:00
+              最終更新: 2026/6/3 17:50:00
             </div>
         </header>
 
         <div class="space-y-6">
+
+    <!-- ===== 2026-06-03: SaaS化・事業化に向けたロードマップ相談 ===== -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+            <span class="bg-slate-800 text-white text-xs px-2 py-1 rounded-md font-mono">PLAN</span>
+            <span class="font-mono text-slate-600">SaaS Roadmap</span>
+          </h2>
+          <span class="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 inline-block">
+            2026/6/3
+          </span>
+        </div>
+        <p class="text-sm font-bold text-slate-700 bg-slate-50 rounded-xl px-3 py-2 mt-2">
+          📈 SaaS化・事業化に向けた将来のシステムアーキテクチャとセキュリティ強化に関するロードマップ相談
+        </p>
+      </div>
+
+      <div class="p-2 sm:p-4 bg-slate-50 border-t border-slate-100">
+        <details class="group bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+          <summary class="font-bold text-slate-700 p-4 flex items-center gap-3 select-none hover:bg-slate-50 transition-colors">
+            <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 group-open:bg-slate-800 group-open:text-white transition-colors">
+              <svg class="w-5 h-5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            会話ログプレビュー (抽出テキスト)
+          </summary>
+          <div class="p-4 bg-slate-900 border-t border-slate-200">
+            <div class="max-h-[600px] overflow-y-auto pr-2">
+              <pre class="text-slate-300 font-mono text-xs sm:text-sm leading-relaxed">
+### 👤 User
+
+現在までの開発状態にはかなり満足しているのですが、今後、このアプリとDB全体を他の会社に月額のサブスクで販売する事を事業化したいと思っています。（中略）そこまでやる事を目標にした場合、この後どんな部分の開発をしたほうがいよいか、考えがありますか？
+
+---
+
+### 🤖 AI Agent
+
+SaaS（月額サブスクリプション型のクラウドサービス）としての事業化、素晴らしい展望ですね！
+今後開発・整備していくべき重要なポイントは大きく分けて「5つ」あります。
+
+1. データの分離方式の決定（マルチテナント vs シングルテナント環境）
+2. 万全なバックアップと復元（データ保護）
+3. 操作ログ（監査ログ）の記録機能
+4. データベースの強固なセキュリティ（RLSの徹底）
+5. スーパー管理者（あなた自身）用の運用画面
+
+まずは「今の1社向け（シングルテナント）の構造のまま、セキュリティ（RLS）とエラーの記録機能を強化する」ところから始めるのが一番安全で確実です。
+              </pre>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
 
     <!-- ===== 2026-06-03: Ver 2.11 (Git Push Test) ===== -->
     <div class="bg-white rounded-3xl shadow-sm border border-emerald-200 overflow-hidden">
@@ -92,7 +145,7 @@
           🎉 Ver. 2.11 アップデート: 副材料なし商品（バゲット等）の実行ステータス送信バグ修正とExcel出力の最適化、UIテーブルのソート機能追加
         </p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <a href="artifacts/32c77ded-7049-4b10-8b01-baa6917289c4/implementation_plan.md.html" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 text-sm font-bold rounded-xl transition-colors border shadow-sm">
+          <a href="#" onclick="alert('過去の記録ファイルが移動または消去されたためアクセスできません。'); return false;" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 border-slate-200 text-sm font-bold rounded-xl border shadow-sm cursor-not-allowed">
             <span>📝</span>implementation_plan.md
           </a>
           <a href="artifacts/32c77ded-7049-4b10-8b01-baa6917289c4/walkthrough.md.html" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 text-sm font-bold rounded-xl transition-colors border shadow-sm">
@@ -164,7 +217,7 @@
           🛠 開発環境（ローカル）から本番環境（Vercel/Supabase）へのデータベース完全上書き同期の実行
         </p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <a href="artifacts/32c77ded-7049-4b10-8b01-baa6917289c4/implementation_plan.md.html" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 text-sm font-bold rounded-xl transition-colors border shadow-sm">
+          <a href="#" onclick="alert('過去の記録ファイルが移動または消去されたためアクセスできません。'); return false;" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 border-slate-200 text-sm font-bold rounded-xl border shadow-sm cursor-not-allowed">
             <span>📝</span>implementation_plan.md
           </a>
           <a href="artifacts/32c77ded-7049-4b10-8b01-baa6917289c4/walkthrough.md.html" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 text-sm font-bold rounded-xl transition-colors border shadow-sm">
