@@ -1,9 +1,25 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 
+async function getUser() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get('bakery_session');
+  if (!sessionCookie?.value) return null;
+  try {
+    return JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+  } catch { return null; }
+}
+
 export async function POST(request: Request) {
   try {
+    // 認証チェック（インポートは特に重要）
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
+    const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -14,7 +30,7 @@ export async function POST(request: Request) {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
 
-    const sheet = workbook.getWorksheet(1); // 1つ目のシートを使用
+    const sheet = workbook.getWorksheet(1);
     if (!sheet) {
       return NextResponse.json({ error: 'Excelシートが見つかりません' }, { status: 400 });
     }
@@ -25,7 +41,6 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
 
     try {
-      // 2行目から読み込み
       const rowsToProcess: any[] = [];
       sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // ヘッダーはスキップ
@@ -40,62 +55,70 @@ export async function POST(request: Request) {
         const priceText = row.getCell(4).text?.replace(/,/g, '').replace(/¥|\\/g, '')?.trim();
         const statusText = row.getCell(5).text?.trim();
 
-        if (!code || !name) {
-          // コードか名前が空の場合はスキップ
-          continue;
-        }
+        if (!code || !name) continue;
 
         excelCodes.add(code);
 
         const purchaseWeight = weightText ? parseInt(weightText, 10) : null;
         const purchasePrice = priceText ? parseInt(priceText, 10) : null;
 
-        // ステータス変換
         let status = 'active';
         if (statusText === '利用停止') status = 'suspended';
         if (statusText === '削除') status = 'deleted';
 
-        // Upsert
+        // 自テナントの材料のみ upsert
         await db.run(`
-          INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price, status)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price, status, tenant_id)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(ingredient_code) DO UPDATE SET
             ingredient_name = excluded.ingredient_name,
             purchase_weight = excluded.purchase_weight,
             purchase_price = excluded.purchase_price,
             status = excluded.status
         `, [
-          code, 
-          name, 
-          isNaN(purchaseWeight as number) ? null : purchaseWeight, 
-          isNaN(purchasePrice as number) ? null : purchasePrice, 
-          status
+          code, name,
+          isNaN(purchaseWeight as number) ? null : purchaseWeight,
+          isNaN(purchasePrice as number) ? null : purchasePrice,
+          status, tenantId
         ]);
-        
-        // 関連テーブルの名前も念のため更新
-        await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
-        await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
-        
+
+        // 関連テーブルの名前も連動更新（自テナントのみ）
+        if (tenantId) {
+          await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
+          await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
+        } else {
+          await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
+          await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
+        }
+
         rowCount++;
       }
 
-      // Excelに存在しなかったコードをDB側で「削除(deleted)」ステータスにする
-      const allIngredients = await db.all('SELECT ingredient_code FROM ingredients');
+      // Excelに存在しなかったコードを「削除」ステータスに（自テナントのみ）
+      let allIngredients;
+      if (tenantId) {
+        allIngredients = await db.all('SELECT ingredient_code FROM ingredients WHERE tenant_id = ?', [tenantId]);
+      } else {
+        allIngredients = await db.all('SELECT ingredient_code FROM ingredients');
+      }
+
       for (const ing of allIngredients) {
         if (!excelCodes.has(ing.ingredient_code)) {
-          await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ?", [ing.ingredient_code]);
+          if (tenantId) {
+            await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ? AND tenant_id = ?", [ing.ingredient_code, tenantId]);
+          } else {
+            await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ?", [ing.ingredient_code]);
+          }
         }
       }
 
       await db.run('COMMIT');
-
       return NextResponse.json({ success: true, count: rowCount });
     } catch (e) {
       await db.run('ROLLBACK');
       console.error('Database Error during import:', e);
       throw e;
     }
-
   } catch (error) {
     console.error('Import Excel Error:', error);
     return NextResponse.json({ error: 'Excelの読み込み・保存に失敗しました' }, { status: 500 });

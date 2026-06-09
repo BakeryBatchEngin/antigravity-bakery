@@ -55,8 +55,21 @@ export function middleware(request: NextRequest) {
       throw new Error("Invalid session data");
     }
 
-    // admin と super_admin はどこでもアクセス可
-    if (role === 'admin' || role === 'super_admin') {
+    // /super-admin/* は super_admin のみアクセス可
+    if (pathname.startsWith('/super-admin') || pathname.startsWith('/api/super-admin')) {
+      if (role !== 'super_admin') {
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+      return NextResponse.next();
+    }
+
+    // super_admin は super-admin 以外のページは不要なのでトップへ（リダイレクト済みのはずだが念のため）
+    if (role === 'super_admin') {
+      return NextResponse.next();
+    }
+
+    // admin はアプリ全体にアクセス可（/super-admin は上で除外済み）
+    if (role === 'admin') {
       return NextResponse.next();
     }
 

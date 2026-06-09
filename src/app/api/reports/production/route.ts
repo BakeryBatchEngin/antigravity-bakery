@@ -5,15 +5,25 @@ import { getDb } from '@/lib/db';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month'); // e.g., '2026-03'
+    const month = searchParams.get('month');
     if (!month) {
       return NextResponse.json({ error: '月が指定されていません' }, { status: 400 });
     }
 
     const cookieStore = await cookies();
+
+    // セッション認証
+    const sessionCookie = cookieStore.get('bakery_session');
+    if (!sessionCookie?.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+    try {
+      JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+    } catch {
+      return NextResponse.json({ error: '無効なセッション' }, { status: 401 });
+    }
+
     const storeCookie = cookieStore.get('active_store_id');
     const storeId = storeCookie ? Number(storeCookie.value) : null;
-    
+
     if (!storeId) {
       return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
     }

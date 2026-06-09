@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import bcrypt from 'bcryptjs';
 
 export async function POST(request: Request) {
   try {
@@ -28,11 +29,22 @@ export async function POST(request: Request) {
       }
       isAuthenticated = true;
     } else {
-      // Admin, Master, Managerはパスワードで認証
-      if (!password || user.password !== password) {
+      // Admin, Master, Manager はパスワードで認証
+      // bcryptハッシュ（$2b$で始まる）と平文の両方に対応（移行期間用）
+      if (!password) {
+        return NextResponse.json({ error: 'パスワードが必要です' }, { status: 401 });
+      }
+      const storedPassword = user.password || '';
+      if (storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2a$')) {
+        // ハッシュ化済みパスワード → bcryptで照合
+        isAuthenticated = await bcrypt.compare(password, storedPassword);
+      } else {
+        // 平文パスワード（移行前の旧ユーザー） → 直接比較
+        isAuthenticated = storedPassword === password;
+      }
+      if (!isAuthenticated) {
         return NextResponse.json({ error: 'パスワードが間違っています' }, { status: 401 });
       }
-      isAuthenticated = true;
     }
 
     if (!isAuthenticated) {
@@ -50,7 +62,8 @@ export async function POST(request: Request) {
       username: user.username,
       role: user.role,
       displayName: user.display_name,
-      storeIds: storeIds
+      storeIds: storeIds,
+      tenant_id: user.tenant_id ?? null,  // ← テナントIDを追加
     };
     
     const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
@@ -89,8 +102,11 @@ export async function POST(request: Request) {
         sameSite: 'lax',
       });
     } else if (user.role === 'admin' || user.role === 'master') {
-      // Admin/Master の場合は最初の店舗をフォールバックとしてセット
-      const firstStore = await db.get(`SELECT id FROM stores ORDER BY store_code ASC LIMIT 1`);
+      // Admin/Master の場合は自テナントの最初の店舗をデフォルトにセット
+      const storeQuery = user.tenant_id
+        ? `SELECT id FROM stores WHERE tenant_id = ${user.tenant_id} ORDER BY store_code ASC LIMIT 1`
+        : `SELECT id FROM stores ORDER BY store_code ASC LIMIT 1`;
+      const firstStore = await db.get(storeQuery);
       if (firstStore) {
         response.cookies.set({
           name: 'active_store_id',

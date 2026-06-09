@@ -271,10 +271,23 @@ export async function initDb() {
     );
   `);
 
+  // テナント（会社）テーブル：1テナントが複数の店舗を持つ階層構造
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id          SERIAL PRIMARY KEY,
+      tenant_code TEXT UNIQUE NOT NULL,
+      tenant_name TEXT NOT NULL,
+      plan        TEXT DEFAULT 'basic',
+      status      TEXT DEFAULT 'active',
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // フェーズ1: ユーザー＆店舗管理基盤
   await database.exec(`
     CREATE TABLE IF NOT EXISTS stores (
-      id SERIAL PRIMARY KEY,
+      id         SERIAL PRIMARY KEY,
+      tenant_id  INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
       store_code TEXT UNIQUE NOT NULL,
       store_name TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -283,19 +296,20 @@ export async function initDb() {
 
   await database.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef')),
-      pin_code TEXT,
-      password TEXT, -- 簡易実装のため平文パスワード（本番ではハッシュ推奨）
+      id           SERIAL PRIMARY KEY,
+      tenant_id    INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      username     TEXT UNIQUE NOT NULL,
+      role         TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef')),
+      pin_code     TEXT,
+      password     TEXT,
       display_name TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
   await database.exec(`
     CREATE TABLE IF NOT EXISTS user_stores (
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      user_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       PRIMARY KEY (user_id, store_id)
     );

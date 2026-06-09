@@ -1,13 +1,34 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 
+async function getUser() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get('bakery_session');
+  if (!sessionCookie?.value) return null;
+  try {
+    return JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
+  } catch { return null; }
+}
+
 export async function GET(request: Request) {
   try {
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
     const db = await getDb();
-    
-    // 全材料データを取得（論理削除されたものも含む）
-    const ingredients = await db.all('SELECT * FROM ingredients ORDER BY ingredient_code ASC');
+
+    // 自テナントの材料のみエクスポート（super_adminは全件）
+    let ingredients;
+    if (user.role === 'super_admin') {
+      ingredients = await db.all('SELECT * FROM ingredients ORDER BY ingredient_code ASC');
+    } else {
+      ingredients = await db.all(
+        'SELECT * FROM ingredients WHERE tenant_id = ? ORDER BY ingredient_code ASC',
+        [user.tenant_id]
+      );
+    }
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Antigravity Bakery';
