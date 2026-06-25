@@ -106,13 +106,18 @@ export async function GET(request: Request) {
     if (mixingExecutionRows && Array.isArray(mixingExecutionRows)) {
       mixingExecutionRows.forEach((row: any) => {
         if (row.executed_at) {
-          const d = new Date(row.executed_at + 'Z');
+          const dateStr = row.executed_at.endsWith('Z') || row.executed_at.includes('+')
+            ? row.executed_at
+            : row.executed_at + 'Z';
+          const d = new Date(dateStr);
           if (!isNaN(d.getTime())) {
-            const m = d.getMonth() + 1;
-            const day = d.getDate();
-            const w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
-            const hh = d.getHours().toString().padStart(2, '0');
-            const mm = d.getMinutes().toString().padStart(2, '0');
+            // JST (UTC+9) として計算する
+            const jstTime = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+            const m = jstTime.getUTCMonth() + 1;
+            const day = jstTime.getUTCDate();
+            const w = ['日', '月', '火', '水', '木', '金', '土'][jstTime.getUTCDay()];
+            const hh = jstTime.getUTCHours().toString().padStart(2, '0');
+            const mm = jstTime.getUTCMinutes().toString().padStart(2, '0');
             mixingExecutionTimeMap[row.batch_id] = `実行: ${m}月${day}日(${w}) ${hh}:${mm}`;
           }
         }
