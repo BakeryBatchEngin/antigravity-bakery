@@ -66,6 +66,7 @@ interface ProductionResponse {
   savedFlatBatches?: FlatBatch[];
   savedFlatProductBatches?: FlatProductBatch[];
   executedBatchIds?: string[];
+  mixingExecutionTimes?: Record<string, string>;
   isSet?: boolean;
   message?: string;
   error?: string;
@@ -271,6 +272,7 @@ export default function ProductionPlanPage() {
   const [flatProductBatches, setFlatProductBatches] = useState<FlatProductBatch[]>([]);
   const [isPlanSet, setIsPlanSet] = useState<boolean>(false);
   const [executedBatchIds, setExecutedBatchIds] = useState<string[]>([]);
+  const [mixingExecutionTimes, setMixingExecutionTimes] = useState<Record<string, string>>({});
   
   // 計量完了のチェック状態管理: { [batchId]: { [ingredientCode]: true/false } }
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, Record<string, boolean>>>({});
@@ -332,6 +334,7 @@ export default function ProductionPlanPage() {
         setIsPlanSet(!!data.isSet);
         const execIds = data.executedBatchIds || [];
         setExecutedBatchIds(execIds);
+        setMixingExecutionTimes(data.mixingExecutionTimes || {});
         
         // 1. 保存された計画データ（Set済み）があればそれを直接使う
         if (data.isSet && data.savedFlatBatches) {
@@ -985,6 +988,36 @@ export default function ProductionPlanPage() {
     }
   };
 
+  const toggleMixingExecution = async (batchId: string, isRevert: boolean = false) => {
+    try {
+      if (isRevert) {
+        if (!confirm('ミキシングの実行記録を取り消しますか？')) return;
+        const res = await fetch(`/api/production/mixing?date=${targetDate}&batchId=${batchId}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Failed to revert mixing');
+        setMixingExecutionTimes(prev => {
+          const next = { ...prev };
+          delete next[batchId];
+          return next;
+        });
+      } else {
+        const res = await fetch('/api/production/mixing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: targetDate, batchId })
+        });
+        if (!res.ok) throw new Error('Failed to record mixing');
+        // 簡単のためローカルで現在時刻をセット（正確にはサーバーからの返り値を使うべきだが即時反映優先）
+        const nowStr = new Date().toISOString();
+        setMixingExecutionTimes(prev => ({ ...prev, [batchId]: nowStr }));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('ミキシング記録の更新に失敗しました。');
+    }
+  };
+
   // 副材料仕込みの個数を1個単位で増減させるロジック
   const adjustProductQuantity = (id: string, productCode: string, deltaQty: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1303,22 +1336,7 @@ export default function ProductionPlanPage() {
                 
                 // 誤差による色付きを防ぐため1gより大きい差分のみ判定
                 const diff = sysTotalFlour - orgTotalFlour;
-                let weightColorClass = isSelected ? 'text-slate-900' : 'text-slate-800 dark:text-slate-200';
-                let totalColorClass = 'text-amber-500'; // 総生地量のデフォルト色
                 const isExecuted = executedBatchIds.includes(batch.id);
-                
-                if (diff > 1) {
-                  weightColorClass = 'text-blue-600 dark:text-blue-400';
-                  totalColorClass = 'text-blue-600 dark:text-blue-400';
-                } else if (diff < -1) {
-                  weightColorClass = 'text-red-600 dark:text-red-400';
-                  totalColorClass = 'text-red-600 dark:text-red-400';
-                }
-
-                if (isExecuted) {
-                  totalColorClass = 'text-emerald-500';
-                  weightColorClass = 'text-emerald-500';
-                }
 
                 // 現在の総生地量
                 const currentTotalWeight = currentFlourWeight * (batch.totalBakersPercent / 100);
@@ -1328,121 +1346,138 @@ export default function ProductionPlanPage() {
                     key={batch.id} 
                     onClick={() => setSelectedBatchId(batch.id)}
                     className={`
-                      cursor-pointer rounded-2xl p-4 transition-all duration-200 flex flex-col relative overflow-hidden
-                      ${isExecuted ? 'border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' : ''}
+                      cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
+                      ${isExecuted 
+                        ? (isSelected 
+                           ? 'border-emerald-500 bg-slate-100 dark:bg-slate-700 shadow-md scale-[1.01]' 
+                           : 'border-l-emerald-500 border-y border-r border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20') 
+                        : 'border-l-amber-500'}
                       ${!isExecuted && isAllChecked ? 'opacity-40 grayscale' : ''}
-                      ${isSelected && !isExecuted
-                        ? 'bg-white text-slate-900 shadow-xl scale-[1.02] border-2 border-amber-500' 
-                        : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600 shadow' : ''}
+                      ${!isExecuted && isSelected
+                        ? 'bg-slate-200 dark:bg-slate-700 shadow-lg scale-[1.01] border-y border-r border-amber-500' 
+                        : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-y border-r border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm' : ''}
                     `}
                   >
                     {/* 実行済みバッジ */}
                     {isExecuted && (
-                      <div className="absolute top-0 right-0 bg-emerald-500 text-white font-bold text-xs px-3 py-1 rounded-bl-lg shadow-sm">
-                        ✅ 実行済み
+                      <div className="absolute top-0 right-0 bg-white text-slate-900 border border-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-bl-lg shadow-sm z-10 dark:bg-slate-800 dark:text-white dark:border-slate-600">
+                        計量済
                       </div>
                     )}
-                    {/* 上部: 品名情報とミキサー選択 */}
-                    <div className="flex flex-col gap-2 mb-3">
-                      <div className="flex gap-2 items-center">
-                        <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${isSelected ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                          {batch.doughCode}
-                        </span>
-                        <span className="font-bold truncate text-lg">{batch.doughName}</span>
-                      </div>
-                      <div className="flex items-center justify-between mt-1">
-                        <div className="flex gap-2">
+                    
+                    {/* 1段目: ヘッダーエリア */}
+                    <div className="flex items-start gap-2 mb-2 pr-16">
+                      <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-500">
+                        {batch.doughCode}
+                      </span>
+                      <span className="font-bold text-base leading-tight break-all text-amber-600 dark:text-amber-500">{batch.doughName}</span>
+                    </div>
+
+                    {/* 2段目: 情報エリア */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <div className="flex flex-col items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500 font-black text-sm shadow-inner">
+                          {batch.batchNumber}
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-500">回目</span>
+                        
+                        <div className="flex gap-1 ml-1">
                           {mixers.map(m => (
                             <button 
                               key={m.id}
                               disabled={isExecuted || isPlanSet}
                               onClick={(e) => handleMixerSelect(batch.id, batch.doughCode, m.id, e)}
-                              className={`w-10 h-10 p-1 flex-shrink-0 rounded-lg border-2 transition-all ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : ''} ${batch.selectedMixerId === m.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-[0_0_8px_rgba(245,158,11,0.5)] scale-110 z-10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 opacity-50 hover:opacity-100'}`}
+                              className={`w-7 h-7 p-0.5 flex-shrink-0 rounded-md border-2 transition-all ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : ''} ${batch.selectedMixerId === m.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-[0_0_8px_rgba(245,158,11,0.5)] scale-110 z-10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 opacity-50 hover:opacity-100'}`}
                               title={`${m.name} (上限 ${m.max_capacity_kg}kg)`}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={`/${m.icon}`} alt={m.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-sm">🔄</span>'; }}/>
+                              <img src={`/${m.icon}`} alt={m.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-[10px]">🔄</span>'; }}/>
                             </button>
                           ))}
                         </div>
-                        
-                        {currentTotalWeight >= 2000 && !isExecuted && !isPlanSet && (
-                          <button
-                            onClick={(e) => splitDoughBatch(batch.id, batch.doughCode, e)}
-                            className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-amber-100 text-slate-400 hover:text-amber-600 border border-slate-300 hover:border-amber-300 transition-colors shadow-sm focus:outline-none"
-                            title="このバッチを半分に分割する"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                          </button>
-                        )}
+                      </div>
+                      
+                      <div className="flex items-start gap-1.5">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-amber-600 dark:text-amber-500">粉量</span>
+                          <div className="text-base font-black tracking-tight leading-none text-amber-600 dark:text-amber-500 mb-1">
+                            {(currentFlourWeight / 1000).toFixed(0)}<span className="text-[9px] font-bold ml-0.5 opacity-80">kg</span>
+                          </div>
+                          {!isExecuted && !isPlanSet && (
+                            <div className="flex bg-slate-100 border border-slate-300 rounded overflow-hidden">
+                              <AutoRepeatButton 
+                                onAction={(e: any) => adjustWeight(batch.id, batch.doughCode, 1, e)}
+                                disabled={isExecuted || isPlanSet}
+                                className={`px-1.5 py-0.5 transition-colors border-r ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd"></path></svg>
+                              </AutoRepeatButton>
+                              <AutoRepeatButton 
+                                onAction={(e: any) => adjustWeight(batch.id, batch.doughCode, -1, e)}
+                                disabled={isExecuted || isPlanSet}
+                                className={`px-1.5 py-0.5 transition-colors ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd"></path></svg>
+                              </AutoRepeatButton>
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-sm text-slate-300 dark:text-slate-600 font-light mt-2">/</span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-amber-600 dark:text-amber-500">総生地量</span>
+                          <div className="text-lg font-black tracking-tight leading-none text-amber-600 dark:text-amber-500 mb-1">
+                            {(currentTotalWeight / 1000).toFixed(2)}<span className="text-[9px] font-bold ml-0.5 opacity-80">kg</span>
+                          </div>
+                          {!isExecuted && !isPlanSet && (
+                            <div className="flex bg-slate-100 border border-slate-300 rounded overflow-hidden">
+                              <AutoRepeatButton 
+                                onAction={(e: any) => adjustTotalWeight(batch.id, batch.doughCode, 0.01, batch.totalBakersPercent, e)}
+                                disabled={isExecuted || isPlanSet}
+                                className={`px-1.5 py-0.5 transition-colors border-r ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd"></path></svg>
+                              </AutoRepeatButton>
+                              <AutoRepeatButton 
+                                onAction={(e: any) => adjustTotalWeight(batch.id, batch.doughCode, -0.01, batch.totalBakersPercent, e)}
+                                disabled={isExecuted || isPlanSet}
+                                className={`px-1.5 py-0.5 transition-colors ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd"></path></svg>
+                              </AutoRepeatButton>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* 下部: 回数と重量アジャスター */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-2 sm:gap-0">
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                          {batch.batchNumber}
-                        </span>
-                        <span className="text-sm opacity-80">回目</span>
-                      </div>
-                      
-                      {/* 重量表示とアジャストボタン */}
-                      <div className="flex items-center gap-1 sm:gap-3 self-end sm:self-auto">
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">粉量</span>
-                          <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${weightColorClass}`}>
-                            {(currentFlourWeight / 1000).toFixed(0)}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">kg</span>
+                    {/* 3段目: アクションエリア */}
+                    <div className="flex items-center justify-start gap-2 pt-2 border-t border-amber-200 dark:border-amber-700/50">
+                      {isExecuted && (
+                        mixingExecutionTimes[batch.id] ? (
+                          <div 
+                            className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded shadow-inner border border-indigo-200 flex items-center gap-1 cursor-pointer hover:bg-indigo-100 transition-colors" 
+                            onClick={(e) => { e.stopPropagation(); toggleMixingExecution(batch.id, true); }}
+                            title="クリックで取り消し"
+                          >
+                            🔄 済 ({new Date(mixingExecutionTimes[batch.id]).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })})
                           </div>
-                        </div>
-
-                        <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1 shrink-0">
-                          <AutoRepeatButton 
-                            onAction={(e: any) => adjustWeight(batch.id, batch.doughCode, 1, e)}
-                            disabled={isExecuted || isPlanSet}
-                            className={`p-1 transition-colors flex items-center justify-center border-b ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
-                            aria-label="粉量を1kg増やす"
+                        ) : (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); toggleMixingExecution(batch.id, false); }}
+                            className="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded shadow-md transition-colors"
                           >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd"></path></svg>
-                          </AutoRepeatButton>
-                          <AutoRepeatButton 
-                            onAction={(e: any) => adjustWeight(batch.id, batch.doughCode, -1, e)}
-                            disabled={isExecuted || isPlanSet}
-                            className={`p-1 transition-colors flex items-center justify-center ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
-                            aria-label="粉量を1kg減らす"
-                          >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
-                          </AutoRepeatButton>
-                        </div>
-                        
-                        <div className="text-slate-300 font-light text-xl sm:text-2xl mx-0 sm:mx-1">/</div>
-                        
-                        <div className="flex flex-col items-end">
-                          <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-widest leading-none mb-1 ${totalColorClass.includes('blue') || totalColorClass.includes('red') ? totalColorClass : 'text-amber-600'}`}>総生地量</span>
-                          <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${totalColorClass}`}>
-                            {(currentTotalWeight / 1000).toFixed(2)}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">kg</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1">
-                          <AutoRepeatButton 
-                            onAction={(e: any) => adjustTotalWeight(batch.id, batch.doughCode, 0.01, batch.totalBakersPercent, e)}
-                            disabled={isExecuted || isPlanSet}
-                            className={`p-1 transition-colors flex items-center justify-center border-b ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
-                            aria-label="総重量を0.01kg増やす"
-                          >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd"></path></svg>
-                          </AutoRepeatButton>
-                          <AutoRepeatButton 
-                            onAction={(e: any) => adjustTotalWeight(batch.id, batch.doughCode, -0.01, batch.totalBakersPercent, e)}
-                            disabled={isExecuted || isPlanSet}
-                            className={`p-1 transition-colors flex items-center justify-center ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
-                            aria-label="総重量を0.01kg減らす"
-                          >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
-                          </AutoRepeatButton>
-                        </div>
-                      </div>
+                            ミキシング実行
+                          </button>
+                        )
+                      )}
+                      {currentTotalWeight >= 2000 && !isExecuted && !isPlanSet && (
+                        <button
+                          onClick={(e) => splitDoughBatch(batch.id, batch.doughCode, e)}
+                          className="px-2 py-1 rounded bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-700 border border-slate-300 hover:border-amber-300 transition-colors text-[10px] font-bold"
+                        >
+                          半分に分割
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1472,119 +1507,126 @@ export default function ProductionPlanPage() {
                     });
                     
                     const diff = sysTotalQty - orgTotalQty;
-                    let qtyColorClass = isSelected ? 'text-slate-900' : 'text-slate-800 dark:text-slate-200';
-                    let totalQtyColorClass = 'text-amber-500'; 
-                    
-                    if (diff > 0) {
-                      qtyColorClass = 'text-blue-600 dark:text-blue-400';
-                      totalQtyColorClass = 'text-blue-600 dark:text-blue-400';
-                    } else if (diff < 0) {
-                      qtyColorClass = 'text-red-600 dark:text-red-400';
-                      totalQtyColorClass = 'text-red-600 dark:text-red-400';
-                    }
-
-                    if (isExecuted) {
-                      qtyColorClass = 'text-emerald-500';
-                      totalQtyColorClass = 'text-emerald-500';
-                    }
 
                     return (
                       <div 
                         key={batch.id} 
                         onClick={() => setSelectedBatchId(batch.id)}
                         className={`
-                          cursor-pointer rounded-2xl p-4 transition-all duration-200 flex flex-col relative overflow-hidden
-                          ${isExecuted ? 'border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' : ''}
+                          cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
+                          ${isExecuted 
+                            ? (isSelected 
+                               ? 'border-emerald-500 bg-slate-100 dark:bg-slate-700 shadow-md scale-[1.01]' 
+                               : 'border-l-emerald-500 border-y border-r border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20') 
+                            : 'border-l-emerald-500'}
                           ${!isExecuted && isAllChecked ? 'opacity-40 grayscale' : ''}
-                          ${isSelected && !isExecuted
-                            ? 'bg-amber-50 text-slate-900 shadow-xl scale-[1.02] border-2 border-amber-500' 
-                            : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600 shadow' : ''}
+                          ${!isExecuted && isSelected
+                            ? 'bg-slate-200 dark:bg-slate-700 shadow-lg scale-[1.01] border-y border-r border-emerald-500' 
+                            : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-y border-r border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm' : ''}
                         `}
                       >
                         {/* 実行済みバッジ */}
                         {isExecuted && (
-                          <div className="absolute top-0 right-0 bg-emerald-500 text-white font-bold text-xs px-3 py-1 rounded-bl-lg shadow-sm">
-                            ✅ 実行済み
+                          <div className="absolute top-0 right-0 bg-white text-slate-900 border border-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-bl-lg shadow-sm z-10 dark:bg-slate-800 dark:text-white dark:border-slate-600">
+                            計量済
                           </div>
                         )}
-                        {/* 上部: 品名情報とミキサー選択 */}
-                        <div className="flex flex-col gap-2 mb-3">
-                          <div className="flex gap-2 items-center flex-1 min-w-0">
-                            <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded flex-shrink-0 ${isSelected ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                              {batch.productCode}
-                            </span>
-                            <span className="font-bold truncate text-lg flex-1">{batch.productName}</span>
-                            {/* 発注元内訳表示ボタン */}
+                        
+                        {/* 1段目: ヘッダーエリア */}
+                        <div className="flex items-start gap-2 mb-2 pr-16">
+                          <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-500">
+                            {batch.productCode}
+                          </span>
+                          <span className="font-bold text-base leading-tight break-all text-emerald-600 dark:text-emerald-500">{batch.productName}</span>
+                        </div>
+
+                        {/* 2段目: 情報エリア */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex flex-col items-center justify-center w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500 font-black text-sm shadow-inner">
+                              {batch.batchNumber}
+                            </div>
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500">回目</span>
+                            
+                            {/* 内訳ボタン */}
                             <button
                               onClick={(e) => handleShowBreakdown(e, batch.productCode, batch.productName)}
-                              className="flex-shrink-0 px-2 py-0.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-900/40 dark:hover:bg-indigo-800/60 dark:text-indigo-300 text-xs font-bold rounded-full border border-indigo-200 dark:border-indigo-700 transition-colors whitespace-nowrap"
-                              title="発注元ごとの注文内訳を表示"
+                              className="ml-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:hover:bg-indigo-800/60 dark:text-indigo-300 text-[10px] font-bold rounded flex items-center gap-1 border border-indigo-200 dark:border-indigo-700 transition-colors"
                             >
                               📋 内訳
                             </button>
+                            
+                            <div className="flex gap-1 ml-1.5">
+                              {mixers.map(m => (
+                                <button 
+                                  key={m.id}
+                                  disabled={isExecuted || isPlanSet}
+                                  onClick={(e) => handleProductMixerSelect(batch.id, batch.productCode, m.id, e)}
+                                  className={`w-7 h-7 p-0.5 flex-shrink-0 rounded-md border-2 transition-all ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : ''} ${batch.selectedMixerId === m.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-[0_0_8px_rgba(245,158,11,0.5)] scale-110 z-10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 opacity-50 hover:opacity-100'}`}
+                                  title={`${m.name} (上限 ${m.max_capacity_kg}kg)`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={`/${m.icon}`} alt={m.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-[10px]">🔄</span>'; }}/>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="flex gap-2 mt-1">
-                            {mixers.map(m => (
-                              <button 
-                                key={m.id}
-                                disabled={isExecuted || isPlanSet}
-                                onClick={(e) => handleProductMixerSelect(batch.id, batch.productCode, m.id, e)}
-                                className={`w-10 h-10 p-1 flex-shrink-0 rounded-lg border-2 transition-all ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : ''} ${batch.selectedMixerId === m.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-[0_0_8px_rgba(245,158,11,0.5)] scale-110 z-10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 opacity-50 hover:opacity-100'}`}
-                                title={`${m.name} (上限 ${m.max_capacity_kg}kg)`}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={`/${m.icon}`} alt={m.name} className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-sm">🔄</span>'; }}/>
-                              </button>
-                            ))}
+                          
+                          <div className="flex items-start gap-1.5">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-emerald-600 dark:text-emerald-500">バッチ</span>
+                              <div className="text-base font-black tracking-tight leading-none text-emerald-600 dark:text-emerald-500 mb-1">
+                                {currentQty}<span className="text-[9px] font-bold ml-0.5 opacity-80">個</span>
+                              </div>
+                              {!isExecuted && !isPlanSet && (
+                                <div className="flex bg-slate-100 border border-slate-300 rounded overflow-hidden">
+                                  <AutoRepeatButton 
+                                    onAction={(e: any) => adjustProductQuantity(batch.id, batch.productCode, 1, e)}
+                                    disabled={isExecuted || isPlanSet}
+                                    className={`px-1.5 py-0.5 transition-colors border-r ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
+                                  >
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd"></path></svg>
+                                  </AutoRepeatButton>
+                                  <AutoRepeatButton 
+                                    onAction={(e: any) => adjustProductQuantity(batch.id, batch.productCode, -1, e)}
+                                    disabled={isExecuted || isPlanSet}
+                                    className={`px-1.5 py-0.5 transition-colors ${isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
+                                  >
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd"></path></svg>
+                                  </AutoRepeatButton>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-sm text-slate-300 dark:text-slate-600 font-light mt-2">/</span>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-emerald-600 dark:text-emerald-500">オーダー累計</span>
+                              <div className="text-lg font-black tracking-tight leading-none text-emerald-600 dark:text-emerald-500">
+                                {batch.originalBatchQuantity}<span className="text-[9px] font-bold ml-0.5 opacity-80">個</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        {/* 下部: 回数と重量アジャスター */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-2 sm:gap-0">
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                              {batch.batchNumber}
-                            </span>
-                            <span className="text-sm opacity-80">回目</span>
-                          </div>
-                          
-                          {/* 重量表示とアジャストボタン */}
-                          <div className="flex items-center gap-1 sm:gap-3 self-end sm:self-auto">
-                            <div className="flex flex-col items-end">
-                              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">バッチ個数</span>
-                              <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${qtyColorClass}`}>
-                                {currentQty}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">個</span>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col bg-slate-100 border border-slate-300 rounded-lg overflow-hidden ml-1 shrink-0">
-                              <AutoRepeatButton 
-                                onAction={(e: any) => adjustProductQuantity(batch.id, batch.productCode, 1, e)}
-                                disabled={isExecuted || isPlanSet}
-                                className={`p-1 transition-colors flex items-center justify-center border-b ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800 border-amber-200' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700 border-slate-300'}`}
-                                aria-label="個数を1増やす"
+                        {/* 3段目: アクションエリア */}
+                        <div className="flex items-center justify-start gap-2 pt-2 border-t border-emerald-200 dark:border-emerald-700/50">
+                          {isExecuted && (
+                            mixingExecutionTimes[batch.id] ? (
+                              <div 
+                                className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded shadow-inner border border-indigo-200 flex items-center gap-1 cursor-pointer hover:bg-indigo-100 transition-colors" 
+                                onClick={(e) => { e.stopPropagation(); toggleMixingExecution(batch.id, true); }}
+                                title="クリックで取り消し"
                               >
-                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd"></path></svg>
-                              </AutoRepeatButton>
-                              <AutoRepeatButton 
-                                onAction={(e: any) => adjustProductQuantity(batch.id, batch.productCode, -1, e)}
-                                disabled={isExecuted || isPlanSet}
-                                className={`p-1 transition-colors flex items-center justify-center ${(isExecuted || isPlanSet) ? 'opacity-30 cursor-not-allowed' : isSelected ? 'hover:bg-amber-200 active:bg-amber-300 text-amber-800' : 'hover:bg-slate-300 active:bg-slate-400 text-slate-700'}`}
-                                aria-label="個数を1減らす"
-                              >
-                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
-                              </AutoRepeatButton>
-                            </div>
-                            
-                            <div className="text-slate-300 font-light text-xl sm:text-2xl mx-0 sm:mx-1">/</div>
-                            
-                            <div className="flex flex-col items-end">
-                              <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-widest leading-none mb-1 ${totalQtyColorClass.includes('blue') || totalQtyColorClass.includes('red') ? totalQtyColorClass : 'text-amber-600'}`}>オーダー累計</span>
-                              <div className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${totalQtyColorClass}`}>
-                                {orgTotalQty}<span className="text-xs sm:text-sm font-bold ml-0.5 opacity-80">個</span>
+                                🔄 済 ({new Date(mixingExecutionTimes[batch.id]).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })})
                               </div>
-                            </div>
-                          </div>
+                            ) : (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); toggleMixingExecution(batch.id, false); }}
+                                className="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded shadow-md transition-colors"
+                              >
+                                ミキシング実行
+                              </button>
+                            )
+                          )}
                         </div>
                       </div>
                     );

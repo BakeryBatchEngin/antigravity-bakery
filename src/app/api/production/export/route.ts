@@ -96,6 +96,29 @@ export async function GET(request: Request) {
       });
     }
     // --------------------------------------------------------
+    
+    // --- ミキシング実行時刻データを取得 ---
+    const mixingExecutionRows = await db.all(
+      `SELECT batch_id, executed_at FROM batch_executions WHERE target_date = ? AND store_id = ?`,
+      [date, storeId]
+    );
+    const mixingExecutionTimeMap: Record<string, string> = {};
+    if (mixingExecutionRows && Array.isArray(mixingExecutionRows)) {
+      mixingExecutionRows.forEach((row: any) => {
+        if (row.executed_at) {
+          const d = new Date(row.executed_at + 'Z');
+          if (!isNaN(d.getTime())) {
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+            const hh = d.getHours().toString().padStart(2, '0');
+            const mm = d.getMinutes().toString().padStart(2, '0');
+            mixingExecutionTimeMap[row.batch_id] = `実行: ${m}月${day}日(${w}) ${hh}:${mm}`;
+          }
+        }
+      });
+    }
+    // --------------------------------------------------------
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Antigravity Bakery';
@@ -122,18 +145,23 @@ export async function GET(request: Request) {
       const totalBakersPercent = batch.totalBakersPercent || 100;
       const currentTotalWeightGrams = currentFlourWeightGrams * (totalBakersPercent / 100);
 
+      const mixingTimeStr = mixingExecutionTimeMap[batch.id] || '';
+
       // バッチタイトル行
       const batchTitleRow = sheet1.addRow([
         `${batch.doughName} (${batch.doughCode}) - ${batch.batchNumber}回目`, 
         '', 
-        '', 
+        mixingTimeStr, 
         `粉量: ${(currentFlourWeightGrams / 1000).toFixed(2)}kg`, 
         `目安: ${(currentTotalWeightGrams / 1000).toFixed(2)}kg`
       ]);
-      sheet1.mergeCells(`A${batchTitleRow.number}:C${batchTitleRow.number}`);
+      sheet1.mergeCells(`A${batchTitleRow.number}:B${batchTitleRow.number}`);
       
       batchTitleRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
       batchTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF59E0B' } }; // Amber 500
+      batchTitleRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCD34D' } }; // Amber 300
+      batchTitleRow.getCell(3).font = { bold: true, color: { argb: 'FFDC2626' } }; // Red 600
+      batchTitleRow.getCell(3).alignment = { horizontal: 'right' };
       batchTitleRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCD34D' } }; // Amber 300
       batchTitleRow.getCell(4).font = { bold: true, color: { argb: 'FF92400E' } }; // Amber 900
       batchTitleRow.getCell(4).alignment = { horizontal: 'right' };
@@ -221,18 +249,23 @@ export async function GET(request: Request) {
       const doughPerItem = originalTotalDough / safeOriginalQty;
       const currentDoughWeight = Math.round(doughPerItem * currentQty * 10) / 10;
 
+      const mixingTimeStr = mixingExecutionTimeMap[batch.id] || '';
+
       // バッチタイトル行
       const batchTitleRow = sheet2.addRow([
         `${batch.productName} (${batch.productCode}) - ${batch.batchNumber}回目`, 
         '', 
-        '', 
+        mixingTimeStr, 
         `仕込数: ${currentQty}個`,
         ''
       ]);
-      sheet2.mergeCells(`A${batchTitleRow.number}:C${batchTitleRow.number}`);
+      sheet2.mergeCells(`A${batchTitleRow.number}:B${batchTitleRow.number}`);
       
       batchTitleRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
       batchTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; // Emerald 500
+      batchTitleRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6EE7B7' } }; // Emerald 300
+      batchTitleRow.getCell(3).font = { bold: true, color: { argb: 'FFDC2626' } }; // Red 600
+      batchTitleRow.getCell(3).alignment = { horizontal: 'right' };
       batchTitleRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6EE7B7' } }; // Emerald 300
       batchTitleRow.getCell(4).font = { bold: true, color: { argb: 'FF065F46' } }; // Emerald 900
       batchTitleRow.getCell(4).alignment = { horizontal: 'right' };

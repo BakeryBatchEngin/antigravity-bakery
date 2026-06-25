@@ -111,9 +111,16 @@ export async function GET(request: Request) {
       }
     }
 
-    // どのバッチがすでに完了（実行済み）したかのリストを取得
-    const executions = await db.all(`SELECT DISTINCT batch_id FROM ingredient_usages WHERE target_date = ? AND store_id = ?`, [date, storeId]);
-    const executedBatchIds = executions.map((e: any) => e.batch_id);
+    // どのバッチの計量がすべて完了（実行済み）したかのリストを取得
+    const usages = await db.all(`SELECT DISTINCT batch_id FROM ingredient_usages WHERE target_date = ? AND store_id = ?`, [date, storeId]);
+    const executedBatchIds = usages.map((e: any) => e.batch_id);
+
+    // バッチごとのミキシング実行時刻を取得
+    const mixingExecutions = await db.all(`SELECT batch_id, executed_at FROM batch_executions WHERE target_date = ? AND store_id = ?`, [date, storeId]);
+    const mixingExecutionTimes: Record<string, string> = {};
+    mixingExecutions.forEach((e: any) => {
+      mixingExecutionTimes[e.batch_id] = e.executed_at;
+    });
 
     // ==========================================
     // A. ベース生地のミキシング計画 (productionPlan)
@@ -301,7 +308,8 @@ export async function GET(request: Request) {
       productMixingPlan: isPlanSet ? [] : productMixingPlan,
       savedFlatBatches: savedFlatBatches,
       savedFlatProductBatches: savedFlatProductBatches,
-      executedBatchIds: executedBatchIds
+      executedBatchIds: executedBatchIds,
+      mixingExecutionTimes: mixingExecutionTimes
     });
 
   } catch (error) {

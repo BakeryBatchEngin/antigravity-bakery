@@ -255,6 +255,18 @@ export async function initDb() {
     );
   `);
   
+  await database.exec(`
+    DROP TABLE IF EXISTS batch_executions CASCADE;
+    CREATE TABLE IF NOT EXISTS batch_executions (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+      target_date TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
+      executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(store_id, target_date, batch_id)
+    );
+  `);
+  
   // 発注元ごとの内訳データを格納するテーブル
   await database.exec(`
     DROP TABLE IF EXISTS order_breakdowns CASCADE;
