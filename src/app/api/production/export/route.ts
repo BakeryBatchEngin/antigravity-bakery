@@ -3,6 +3,39 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 
+// タイムゾーンによるパースの違いを吸収して JST フォーマット文字列を返す関数
+function formatToJST(val: any): string {
+  if (!val) return '';
+  let date: Date;
+  if (val instanceof Date) {
+    // ローカル(pgドライバ)の場合、DBの生の値(UTC)がローカル時間としてパースされているので、
+    // 各要素を取り出して UTC として組み立て直す
+    const y = val.getFullYear();
+    const mo = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    const h = String(val.getHours()).padStart(2, '0');
+    const m = String(val.getMinutes()).padStart(2, '0');
+    const s = String(val.getSeconds()).padStart(2, '0');
+    date = new Date(`${y}-${mo}-${d}T${h}:${m}:${s}Z`);
+  } else {
+    // Vercel(文字列)の場合
+    const str = String(val);
+    date = new Date(str.endsWith('Z') || str.includes('+') ? str : str + 'Z');
+  }
+
+  if (isNaN(date.getTime())) return '';
+
+  // UTCからJST(+9時間)に変換
+  const jstTime = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const m = jstTime.getUTCMonth() + 1;
+  const day = jstTime.getUTCDate();
+  const w = ['日', '月', '火', '水', '木', '金', '土'][jstTime.getUTCDay()];
+  const hh = jstTime.getUTCHours().toString().padStart(2, '0');
+  const mm = jstTime.getUTCMinutes().toString().padStart(2, '0');
+  
+  return `${m}月${day}日(${w}) ${hh}:${mm}`;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -74,19 +107,9 @@ export async function GET(request: Request) {
     const doneTimeMap: Record<string, Record<string, string>> = {};
     if (usageRows && Array.isArray(usageRows)) {
       usageRows.forEach((row: any) => {
-        // created_at は PostgreSQL の場合 UTC で保存されているため JST (Asia/Tokyo) に変換する
         if (row.created_at) {
-          const d = new Date(row.created_at + 'Z'); // UTCとしてパース（Supabaseの文字列フォーマットに依存）
-          // 万が一 Invalid Date などを防ぐ
-          if (!isNaN(d.getTime())) {
-            // 'M月D日（曜） HH:mm'形式にする
-            const m = d.getMonth() + 1;
-            const day = d.getDate();
-            const w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
-            const hh = d.getHours().toString().padStart(2, '0');
-            const mm = d.getMinutes().toString().padStart(2, '0');
-            const timeStr = `${m}月${day}日（${w}） ${hh}:${mm}`;
-            
+          const timeStr = formatToJST(row.created_at);
+          if (timeStr) {
             if (!doneTimeMap[row.batch_id]) {
               doneTimeMap[row.batch_id] = {};
             }
@@ -106,19 +129,9 @@ export async function GET(request: Request) {
     if (mixingExecutionRows && Array.isArray(mixingExecutionRows)) {
       mixingExecutionRows.forEach((row: any) => {
         if (row.executed_at) {
-          const dateStr = row.executed_at.endsWith('Z') || row.executed_at.includes('+')
-            ? row.executed_at
-            : row.executed_at + 'Z';
-          const d = new Date(dateStr);
-          if (!isNaN(d.getTime())) {
-            // JST (UTC+9) として計算する
-            const jstTime = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-            const m = jstTime.getUTCMonth() + 1;
-            const day = jstTime.getUTCDate();
-            const w = ['日', '月', '火', '水', '木', '金', '土'][jstTime.getUTCDay()];
-            const hh = jstTime.getUTCHours().toString().padStart(2, '0');
-            const mm = jstTime.getUTCMinutes().toString().padStart(2, '0');
-            mixingExecutionTimeMap[row.batch_id] = `実行: ${m}月${day}日(${w}) ${hh}:${mm}`;
+          const timeStr = formatToJST(row.executed_at);
+          if (timeStr) {
+            mixingExecutionTimeMap[row.batch_id] = `実行: ${timeStr}`;
           }
         }
       });

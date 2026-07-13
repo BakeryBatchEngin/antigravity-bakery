@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>生成AIによる業務効率化の真実と最適解</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- Reveal.js のスタイルシートをCDNから読み込みます -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+  <!-- テーマの指定：シンプルで洗練された 'league' を使います（他にも black, white, simple などが使えます） -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/league.min.css" id="theme">
+  <style>
+    /* 見やすさのための独自調整 */
+    .reveal h1, .reveal h2, .reveal h3 {
+      text-transform: none;
+      font-family: 'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+    }
+    .reveal h2 {
+      color: #fca311;
+    }
+    .reveal p, .reveal li {
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+    .highlight {
+      color: #e63946;
+      font-weight: bold;
+    }
+    .sub-text {
+      font-size: 0.7em;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- スライド 1: タイトル -->
+      <section>
+        <h2>生成AIによる<br>業務効率化の真実と最適解</h2>
+        <p>〜 Antigravity Bakery 開発から見えたもの 〜</p>
+      </section>
+
+      <!-- スライド 2: 世間の話題と「現実」 -->
+      <section>
+        <section>
+          <h2>世間の期待と「現実」</h2>
+          <p>現在、生成AIによる業務効率化が<br>大きな話題となっています。</p>
+          <p class="fragment">しかし、生成AIは<span class="highlight">「魔法の箱」ではありません。</span></p>
+        </section>
+        <section>
+          <h2>データを投げ込めば解決？</h2>
+          <ul>
+            <li class="fragment">AIにただデータを投げ込んでも、全部を理解して希望通りに答えてくれるわけではありません。</li>
+            <li class="fragment">データの前提を詳しく教え込んでも、簡単に最適な答えが返ってくるわけでもありません。</li>
+            <li class="fragment">機密情報がAIに学習されてしまう<strong>リスク</strong>も存在します。</li>
+          </ul>
+        </section>
+        <section>
+          <h2>現在の利用実態</h2>
+          <p>結局のところ、多くの企業では</p>
+          <h3>「Chat（チャット）中心の利用」</h3>
+          <p>に留まっているのが実情です。</p>
+        </section>
+      </section>
+
+      <!-- スライド 3: AIで「アプリを作ろう」とすると… -->
+      <section>
+        <section>
+          <h2>AIで「アプリを作ろう」とすると…</h2>
+          <p>生成AIを使って自社専用の業務ツールを作ろうとした場合の「壁」について</p>
+        </section>
+        <section>
+          <h2>ローカル開発の壁</h2>
+          <p>「各自のPCにPythonをインストールして、ローカルアプリを作る」</p>
+          <p class="fragment" style="color:#ffb703;">→ この<strong>第一段階だけでも</strong>、一般の方にとっては決して簡単ではありません。</p>
+        </section>
+        <section>
+          <h2>運用の壁</h2>
+          <p>仮にアプリが完成したとしても…</p>
+          <p class="fragment">PC上の「仮想サーバー」を立ち上げて<br>動かさないと使えないという実情があります。<br><span class="sub-text">（これでは、現場の業務でスムーズに使うことは困難です）</span></p>
+        </section>
+      </section>
+
+      <!-- スライド 4: では、どう使うのが良いのか？ -->
+      <section>
+        <section>
+          <h2>では、どう使うのが正解か？</h2>
+        </section>
+        <section>
+          <h2>真の「業務効率化」とは</h2>
+          <p>生成AIの有効な利用法は、</p>
+          <p class="fragment" style="color:#8ecae6; font-size:1.1em; font-weight:bold;">
+            「実際の自社の業務に100%マッチしたアプリを、<br>コード書き職人の手を使わずに構築できること」
+          </p>
+          <p class="fragment">にあります。</p>
+        </section>
+      </section>
+
+      <!-- スライド 5: 現場に落とし込むための「最適解」 -->
+      <section>
+        <section>
+          <h2>現場に落とし込むための<br>「最適解」</h2>
+        </section>
+        <section>
+          <h2>SaaS化 ＋ 信頼できるDB</h2>
+          <p>構築したアプリを業務に落とし込むためには、</p>
+          <ul>
+            <li class="fragment"><strong>SaaS（クラウドサービス）化</strong>する。</li>
+            <li class="fragment"><strong>信頼できるDBサービス上</strong>で、カスタムアプリを動かす。</li>
+          </ul>
+          <p class="fragment highlight" style="margin-top: 1.5em; font-size: 1.1em;">
+            これこそが、現状の生成AIを使った業務効率化の<br>「最高の活用方法」の一つです。
+          </p>
+        </section>
+      </section>
+
+      <!-- スライド 6: Antigravity Bakery のアプローチ -->
+      <section>
+        <h2>Antigravity Bakery の事例</h2>
+        <ul style="font-size: 0.85em;">
+          <li>厨房という現場のリアルな課題（粉が舞う環境、タブレット操作）に<strong>100%フィットする専用システム</strong></li>
+          <li>AIとの協働（ペアプログラミング）による<strong>コード書き職人レス</strong>での高速構築</li>
+          <li>堅牢なクラウドDBを用いた<strong>セキュアなSaaSとしての運用</strong></li>
+        </ul>
+        <p style="margin-top: 1.5em; color:#a8dadc;"><strong>「Chat利用」を超えた、AI活用の新しいステージへ</strong></p>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Reveal.js のスクリプト読み込みと初期化 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true, // URLのハッシュでスライド位置を記憶
+      transition: 'slide', // アニメーションの種類（none/fade/slide/convex/concave/zoom）
+      slideNumber: 'c/t', // スライド番号を表示 (現在/全体)
+      controls: true, // 右下のコントロールを表示
+      progress: true // 下部のプログレスバーを表示
+    });
+  </script>
+</body>
+</html>

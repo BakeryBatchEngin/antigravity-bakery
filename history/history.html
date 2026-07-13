@@ -5129,6 +5129,28 @@ OK.また続きからやりましょうね！
       </div>
     </div>
   
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+            <span class="bg-slate-800 text-white text-xs px-2 py-1 rounded-md font-mono">Ver.</span>
+            <span class="font-mono text-slate-600">2.31</span>
+          </h2>
+          <span class="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 inline-block">
+            2026/7/3 19:38:07
+          </span>
+        </div>
+        <div class="mt-4 text-slate-600 text-sm leading-relaxed">
+          <ul class="list-disc list-inside space-y-1">
+            <li><strong>LocalDBのマスターデータ修復:</strong> ローカル環境のみ tenant_id カラムが欠落していた問題を修正しデータを復旧</li>
+            <li><strong>Excel出力バグの修正:</strong> ローカル環境で executed_at が Date オブジェクトで返ることに起因する 500エラーを解消</li>
+            <li><strong>Antigravity IDEセットアップサポート:</strong> ユーザーのIDEインストール、VS Codeからの設定移行、Googleログイン、プラグイン設定をガイダンス</li>
+            <li><strong>仕様解説:</strong> 仕込み画面の計算結果がスナップショットとして保存されている仕組みを説明</li>
+          </ul>
+        </div>
+      </div>
+    </div>
         </div>
         <footer class="mt-12 text-center text-slate-400 text-sm font-medium">
           &copy; Antigravity Bakery Batch Engine - Development History
