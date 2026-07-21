@@ -15,6 +15,8 @@
     "@types/sqlite3": "^3.1.11",
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.25.0",
     "next": "16.1.6",
     "pg": "^8.20.0",
     "react": "19.2.3",

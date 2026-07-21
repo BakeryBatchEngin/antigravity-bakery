@@ -5151,6 +5151,29 @@ OK.また続きからやりましょうね！
         </div>
       </div>
     </div>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+            <span class="bg-slate-800 text-white text-xs px-2 py-1 rounded-md font-mono">Ver.</span>
+            <span class="font-mono text-slate-600">2.40</span>
+          </h2>
+          <span class="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 inline-block">
+            2026/7/21 13:47:41
+          </span>
+        </div>
+        <div class="mt-4 text-slate-600 text-sm leading-relaxed">
+          <ul class="list-disc list-inside space-y-1">
+            <li><strong>ミキシング回数（作業量指標）の可視化機能を追加</strong></li>
+            <li>シェフモードの仕込み画面のタイトルに、その日の計画された「ミキシング回数」を表示</li>
+            <li>Ingredients Report（生産実績）の表の先頭行に、各日の「ミキシング実行済みの回数」を集計して表示</li>
+            <li>ミキシング回数は「生地仕込みバッチ」＋「副材料がある商品仕込みバッチ」として厳密に算出</li>
+            <li>将来のManager Dashboardへの拡張を見据え、API側に日ごとのミキシング回数算出ロジックを実装</li>
+          </ul>
+        </div>
+      </div>
+    </div>
         </div>
         <footer class="mt-12 text-center text-slate-400 text-sm font-medium">
           &copy; Antigravity Bakery Batch Engine - Development History

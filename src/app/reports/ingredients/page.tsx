@@ -24,6 +24,7 @@ export default function IngredientsReportPage() {
   const [history, setHistory] = useState<IngredientHistory[]>([]);
   const [productionRecords, setProductionRecords] = useState<any[]>([]);
   const [salesSummary, setSalesSummary] = useState({ total_retail_sales: 0, total_wholesale_sales: 0 });
+  const [dailyMixCounts, setDailyMixCounts] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<'ingredients' | 'production'>('ingredients');
   const [isLoading, setIsLoading] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -106,6 +107,7 @@ export default function IngredientsReportPage() {
       }
       if (pRes.ok) {
         setProductionRecords(pData.records || []);
+        setDailyMixCounts(pData.dailyMixCounts || {});
       }
     } catch (e) {
       console.error(e);
@@ -303,6 +305,26 @@ export default function IngredientsReportPage() {
                       </tr>
                     </thead>
                     <tbody>
+                      {/* ミキシング回数行 */}
+                      <tr className="group border-b-4 border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="p-4 px-4 font-mono text-sm text-slate-400 sticky left-0 bg-white dark:bg-slate-800 group-hover:bg-amber-50 dark:group-hover:bg-slate-700"></td>
+                        <td className="p-4 px-4 font-bold text-amber-600 dark:text-amber-500 sticky left-[120px] bg-white dark:bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] group-hover:bg-amber-50 dark:group-hover:bg-slate-700 flex items-center gap-2">
+                          <span>🥣</span> ミキシング回数
+                        </td>
+                        {(() => {
+                          const [y, m] = targetMonth.split('-');
+                          const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+                          return Array.from({length: lastDay}, (_, i) => i + 1).map(d => {
+                            const dateKey = `${y}-${m}-${d.toString().padStart(2, '0')}`;
+                            const val = dailyMixCounts[dateKey] || 0;
+                            return (
+                              <td key={d} className={`p-4 px-4 text-center font-bold ${val > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                                {val > 0 ? `${val}回` : '-'}
+                              </td>
+                            );
+                          });
+                        })()}
+                      </tr>
                       {sortedProductionRecords.map((rec, i) => (
                         <tr key={i} className="group border-b border-slate-100 dark:border-slate-700/50 hover:bg-emerald-50 dark:hover:bg-slate-700/30 transition-colors">
                           <td className="p-4 px-4 font-mono text-sm text-slate-500 sticky left-0 bg-white dark:bg-slate-800 group-hover:bg-emerald-50 dark:group-hover:bg-slate-700">{rec.productCode}</td>

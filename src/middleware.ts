@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // 認証不要でアクセスできるパス（ログインAPIや画像など）
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico', '/presentation'];
 
 // マネージャー専用APIの許可パス（/api/reports/manager は /reports に含まれるためOK）
 

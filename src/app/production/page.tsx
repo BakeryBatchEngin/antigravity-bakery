@@ -1197,7 +1197,7 @@ export default function ProductionPlanPage() {
       <div className="flex-none flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-800 p-4 sm:px-8 border-b border-slate-200 dark:border-slate-700 shadow-sm z-10">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-800 dark:text-slate-100">
-            <span className="text-3xl text-amber-500">🥣</span> 本日の仕込み
+            <span className="text-3xl text-amber-500">🥣</span> 本日の仕込み（{flatBatches.length + flatProductBatches.filter(b => b.baseIngredients && b.baseIngredients.length > 0).length}回）
           </h2>
         </div>
         
