@@ -3,3 +3,7 @@
 ## 重要な開発ルール
 1. 修正後はローカル環境でのテストを促すこと。ユーザーがローカルで動作確認をして『OK』を出すまで、絶対に git push を実行してはならない。
 2. 1日の作業を終わる際は、必ず History.html のフォルダ (history/artifacts/) に記録用のファイル (implementation_plan.md や walkthrough.md など) をコピー保存してから作業を終了すること。
+3. 【環境の分離】開発作業は必ず以下の「開発環境」に対してのみ行うこと。
+   - 開発環境: ローカル (http://localhost:3000/) ＋ Supabase `bakery-dev` (https://hwmccyhbnhyxrkjeqwnb.supabase.co)
+   - 本番環境: Vercel ＋ Supabase `BakeryBatchEngin's Project` (https://klyyjcvezaletaazcrgx.supabase.co)
+4. 【本番環境の保護】ユーザーの明示的な許可があるまでは、本番環境へのアップデートやデータ変更は絶対に実行しないこと。

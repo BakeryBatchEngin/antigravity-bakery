@@ -34,6 +34,29 @@
       <div class="p-6">
         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
           <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+            <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded-md font-mono">Ver 3.01</span>
+            <span class="font-bold text-slate-700">現場用Excelオーダー表の高度な読み込み対応</span>
+          </h2>
+          <span class="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 inline-block">
+            2026/08/12
+          </span>
+        </div>
+        <div class="mt-4 text-sm text-slate-600">
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Excelアップロード時に日付（シート名）を選択して読み込む機能を追加し高速化</li>
+            <li>ファイル名から「年月」を自動取得する機能を追加</li>
+            <li>B列（非表示）を商品コードとして自動認識し、Totalが0の行をスキップする仕様に変更</li>
+            <li>ヘッダー行の「Today total」を基準に、店舗名やデータ開始行のズレを自動補正</li>
+            <li>L列（店舗Total）やM列（￥）などの中間集計列を自動スキップし、純粋な店舗内訳のみを読み込むよう改修</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
             <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded-md font-mono">Ver 2.30</span>
             <span class="font-bold text-slate-700">UIの刷新とミキシング記録機能の追加</span>
           </h2>
