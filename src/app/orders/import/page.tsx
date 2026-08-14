@@ -320,7 +320,7 @@ export default function OrderImportPage() {
 
       // マスタ未登録商品のチェック（有効なコードリストが存在する場合のみ）
       if (validProductCodes.size > 0 && !validProductCodes.has(pKeyStr)) {
-        errors.push(`シート「${sheetName}」の${rowIndex + 1}行目: 商品コード「${pKeyStr}」は商品マスタに未登録ですが、合計値(${amt})があります。`);
+        errors.push(`対象日「${orderDate}」の${rowIndex + 1}行目: 商品コード「${pKeyStr}」は商品マスタに未登録ですが、合計値(${amt})があります。`);
         continue;
       }
 
