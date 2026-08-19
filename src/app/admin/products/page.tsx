@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // 型定義
 interface ProductDough {
@@ -27,11 +27,14 @@ interface Product {
 interface MasterDough {
   dough_id: string;
   dough_name: string;
+  ingredients: { ingredient_code: string; bakers_percent: number; }[];
 }
 
 interface MasterIngredient {
   ingredient_code: string;
   ingredient_name: string;
+  purchase_price?: number;
+  purchase_weight?: number;
 }
 
 export default function ProductsMasterPage() {
@@ -56,6 +59,45 @@ export default function ProductsMasterPage() {
   });
   
   const [errorMsg, setErrorMsg] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 材料1gあたりの単価を取得
+  const getIngredientCostPerGram = (code: string) => {
+    const ing = masterIngredients.find(i => i.ingredient_code === code);
+    if (ing && ing.purchase_price && ing.purchase_weight && ing.purchase_weight > 0) {
+      return ing.purchase_price / ing.purchase_weight;
+    }
+    return 0;
+  };
+
+  // 生地1gあたりの単価を取得
+  const getDoughCostPerGram = (doughCode: string) => {
+    const dough = masterDoughs.find(d => d.dough_id === doughCode);
+    if (!dough || !dough.ingredients) return 0;
+    
+    let totalPercent = 0;
+    let costForTotalPercent = 0;
+    dough.ingredients.forEach(ing => {
+      totalPercent += ing.bakers_percent;
+      const costPerG = getIngredientCostPerGram(ing.ingredient_code);
+      costForTotalPercent += ing.bakers_percent * costPerG;
+    });
+    if (totalPercent === 0) return 0;
+    return (costForTotalPercent / totalPercent);
+  };
+
+  // 商品1個あたりの原価を計算
+  const calculateProductCost = (prod: Product) => {
+    let totalCost = 0;
+    prod.doughs.forEach(d => {
+      totalCost += getDoughCostPerGram(d.dough_code) * d.dough_amount;
+    });
+    prod.ingredients.forEach(i => {
+      totalCost += getIngredientCostPerGram(i.ingredient_code) * i.ingredient_amount;
+    });
+    return totalCost;
+  };
 
   useEffect(() => {
     fetchData();
@@ -190,6 +232,39 @@ export default function ProductsMasterPage() {
     }
   };
 
+  const handleDownloadExcel = () => {
+    window.location.href = '/api/admin/products/export';
+  };
+
+  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setErrorMsg('');
+    const formDataObj = new FormData();
+    formDataObj.append('file', file);
+
+    try {
+      const res = await fetch('/api/admin/products/import', {
+        method: 'POST',
+        body: formDataObj,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Excelのアップロードに成功しました');
+        fetchData();
+      } else {
+        setErrorMsg(data.error || 'アップロードに失敗しました');
+      }
+    } catch (err) {
+      setErrorMsg('アップロード通信エラー');
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   // 検索・並べ替えロジック
   const filteredProducts = products.filter(p => {
     if (!searchQuery) return true;
@@ -214,6 +289,25 @@ export default function ProductsMasterPage() {
         <h1 className="text-3xl font-black text-white flex items-center gap-3">
           <span className="text-4xl text-amber-500">🥖</span> Product Master
         </h1>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadExcel}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600 text-sm flex items-center gap-2"
+          >
+            <span>📥</span> Excel Download
+          </button>
+          <label className={`px-4 py-2 ${isUploading ? 'bg-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer'} text-white font-bold rounded-lg transition-colors shadow-sm text-sm flex items-center gap-2`}>
+            <span>📤</span> {isUploading ? 'Uploading...' : 'Excel Upload'}
+            <input 
+              type="file" 
+              accept=".xlsx" 
+              className="hidden" 
+              ref={fileInputRef}
+              onChange={handleUploadExcel}
+              disabled={isUploading}
+            />
+          </label>
+        </div>
       </div>
 
       {errorMsg && (
@@ -451,7 +545,14 @@ export default function ProductsMasterPage() {
                     <button onClick={() => handleDelete(prod.product_code)} className="p-1 hover:bg-red-100 text-red-600 rounded bg-white border border-slate-200 shadow-sm">🗑️</button>
                   </div>
                   <div className="mb-4 pr-16">
-                    <span className="text-xs font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded shadow-sm">{prod.product_code}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-mono bg-amber-100 text-amber-800 px-3 py-1 rounded shadow-sm">{prod.product_code}</span>
+                      {calculateProductCost(prod) > 0 && (
+                        <span className="text-sm font-bold bg-slate-200 text-slate-700 px-3 py-1 rounded border border-slate-300 shadow-sm">
+                          原価: ¥{Math.round(calculateProductCost(prod))}/個
+                        </span>
+                      )}
+                    </div>
                     <h3 className="font-black text-xl text-slate-800 mt-2">{prod.product_name}</h3>
                   </div>
 
@@ -459,10 +560,20 @@ export default function ProductsMasterPage() {
                     <div>
                       <span className="text-[10px] font-bold text-slate-500 block">一般販売価格</span>
                       <span className="text-lg font-black text-slate-700">¥ {prod.retail_price?.toLocaleString() || 0}</span>
+                      {prod.retail_price > 0 && calculateProductCost(prod) > 0 && (
+                        <span className="text-xs font-bold text-slate-400 block mt-1">
+                          原価率: {((calculateProductCost(prod) / prod.retail_price) * 100).toFixed(1)}%
+                        </span>
+                      )}
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-500 block">社内取引価格</span>
                       <span className="text-lg font-black text-slate-700">¥ {prod.wholesale_price?.toLocaleString() || 0}</span>
+                      {prod.wholesale_price > 0 && calculateProductCost(prod) > 0 && (
+                        <span className="text-xs font-bold text-slate-400 block mt-1">
+                          原価率: {((calculateProductCost(prod) / prod.wholesale_price) * 100).toFixed(1)}%
+                        </span>
+                      )}
                     </div>
                   </div>
 

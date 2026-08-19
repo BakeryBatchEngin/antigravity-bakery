@@ -95,6 +95,8 @@ export async function POST(request: Request) {
       }
 
       // Excelに存在しなかったコードを「削除」ステータスに（自テナントのみ）
+      // ※部分追加アップロードに対応するため、完全同期の削除ロジックを無効化
+      /*
       let allIngredients;
       if (tenantId) {
         allIngredients = await db.all('SELECT ingredient_code FROM ingredients WHERE tenant_id = ?', [tenantId]);
@@ -111,6 +113,7 @@ export async function POST(request: Request) {
           }
         }
       }
+      */
 
       await db.run('COMMIT');
       return NextResponse.json({ success: true, count: rowCount });

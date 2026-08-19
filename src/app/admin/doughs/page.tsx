@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // 生地に含まれる材料の型
 interface DoughIngredient {
@@ -20,6 +20,8 @@ interface Dough {
 interface MasterIngredient {
   ingredient_code: string;
   ingredient_name: string;
+  purchase_price?: number;
+  purchase_weight?: number;
 }
 
 export default function DoughsMasterPage() {
@@ -36,6 +38,32 @@ export default function DoughsMasterPage() {
   });
   
   const [errorMsg, setErrorMsg] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 材料1gあたりの単価を取得
+  const getIngredientCostPerGram = (code: string) => {
+    const ing = masterIngredients.find(i => i.ingredient_code === code);
+    if (ing && ing.purchase_price && ing.purchase_weight && ing.purchase_weight > 0) {
+      return ing.purchase_price / ing.purchase_weight;
+    }
+    return 0;
+  };
+
+  // 生地1kg(1000g)あたりの原価を計算
+  const calculateDoughCostPerKg = (dough: Dough) => {
+    let totalPercent = 0;
+    let costForTotalPercent = 0;
+
+    dough.ingredients.forEach(ing => {
+      totalPercent += ing.bakers_percent;
+      const costPerG = getIngredientCostPerGram(ing.ingredient_code);
+      costForTotalPercent += ing.bakers_percent * costPerG;
+    });
+
+    if (totalPercent === 0) return 0;
+    return (costForTotalPercent / totalPercent) * 1000;
+  };
 
   useEffect(() => {
     fetchData();
@@ -151,12 +179,64 @@ export default function DoughsMasterPage() {
     }
   };
 
+  const handleDownloadExcel = () => {
+    window.location.href = '/api/admin/doughs/export';
+  };
+
+  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setErrorMsg('');
+    const formDataObj = new FormData();
+    formDataObj.append('file', file);
+
+    try {
+      const res = await fetch('/api/admin/doughs/import', {
+        method: 'POST',
+        body: formDataObj,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Excelのアップロードに成功しました');
+        fetchData();
+      } else {
+        setErrorMsg(data.error || 'アップロードに失敗しました');
+      }
+    } catch (err) {
+      setErrorMsg('アップロード通信エラー');
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-black text-white flex items-center gap-3">
           <span className="text-4xl text-amber-500">🥣</span> Dough Master
         </h1>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadExcel}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600 text-sm flex items-center gap-2"
+          >
+            <span>📥</span> Excel Download
+          </button>
+          <label className={`px-4 py-2 ${isUploading ? 'bg-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer'} text-white font-bold rounded-lg transition-colors shadow-sm text-sm flex items-center gap-2`}>
+            <span>📤</span> {isUploading ? 'Uploading...' : 'Excel Upload'}
+            <input 
+              type="file" 
+              accept=".xlsx" 
+              className="hidden" 
+              ref={fileInputRef}
+              onChange={handleUploadExcel}
+              disabled={isUploading}
+            />
+          </label>
+        </div>
       </div>
 
       {errorMsg && (
@@ -292,8 +372,15 @@ export default function DoughsMasterPage() {
               doughs.map(dough => (
                 <div key={dough.dough_id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-slate-50 group">
                   <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded">{dough.dough_id}</span>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono bg-slate-200 text-slate-600 px-3 py-1 rounded">{dough.dough_id}</span>
+                        {calculateDoughCostPerKg(dough) > 0 && (
+                          <span className="text-sm font-bold bg-amber-100 text-amber-800 px-3 py-1 rounded border border-amber-200 shadow-sm">
+                            原価: ¥{Math.round(calculateDoughCostPerKg(dough))}/kg
+                          </span>
+                        )}
+                      </div>
                       <h3 className="font-bold text-lg text-slate-800 mt-1">{dough.dough_name}</h3>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
