@@ -1,14 +1,13 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
-const path = require('path');
+﻿const sqlite3 = require('sqlite3').verbose();
+const db = new sqlite3.Database('./bakery.db');
 
-async function main() {
-  const dbPath = path.join(process.cwd(), 'bakery.sqlite');
-  const db = await open({ filename: dbPath, driver: sqlite3.Database });
-  
-  const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table'");
-  console.log("Newly created tables:");
-  tables.forEach(t => console.log(`- ${t.name}`));
-}
-
-main().catch(console.error);
+db.all(
+  SELECT t.id, t.tenant_name, COUNT(DISTINCT s.id) as store_count, COUNT(DISTINCT u.id) as user_count 
+  FROM tenants t 
+  LEFT JOIN stores s ON s.tenant_id = t.id 
+  LEFT JOIN users u ON u.tenant_id = t.id 
+  GROUP BY t.id
+, [], (err, rows) => {
+  if (err) throw err;
+  console.log(rows);
+});

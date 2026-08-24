@@ -85,6 +85,7 @@ interface FlatBatch {
   baseIngredients: BatchIngredient[];
   currentFlourWeightGrams: number;
   selectedMixerId?: string;
+  isAdditional?: boolean;
 }
 
 interface FlatProductBatch {
@@ -106,6 +107,7 @@ interface FlatProductBatch {
   currentBatchQuantity: number;
   maxBatchQuantity: number;
   selectedMixerId?: string;
+  isAdditional?: boolean;
 }
 
 
@@ -292,6 +294,21 @@ export default function ProductionPlanPage() {
     isLoading: false,
   });
 
+  // 追加仕込み用状態
+  const [addModal, setAddModal] = useState<{
+    isOpen: boolean;
+    products: any[];
+    selectedProductCode: string;
+    quantity: number;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    products: [],
+    selectedProductCode: '',
+    quantity: 1,
+    isLoading: false,
+  });
+
   // 初回レンダリング時にURLのdateパラメータがあればそれを、なければ今日の日付をセットし、データをフェッチ
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -319,6 +336,67 @@ export default function ProductionPlanPage() {
     }
   };
 
+  // 追加仕込みモーダルを開く
+  const handleOpenAddModal = async () => {
+    setAddModal(prev => ({ ...prev, isOpen: true, isLoading: true }));
+    try {
+      const res = await fetch('/api/admin/products');
+      const data = await res.json();
+      if (data.products) {
+        setAddModal(prev => ({ ...prev, products: data.products, isLoading: false }));
+      } else {
+        setAddModal(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch {
+      setAddModal(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // 追加仕込みの実行
+  const handleAddBatchSubmit = async () => {
+    if (!addModal.selectedProductCode || addModal.quantity <= 0) return;
+    setAddModal(prev => ({ ...prev, isLoading: true }));
+    try {
+      const res = await fetch('/api/production/additional-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productCode: addModal.selectedProductCode, quantity: addModal.quantity })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        const newDoughs = data.additionalDoughBatches || [];
+        const newProducts = data.additionalProductBatches || [];
+        
+        const updatedDoughs = [...flatBatches, ...newDoughs];
+        const updatedProducts = [...flatProductBatches, ...newProducts];
+        
+        setFlatBatches(updatedDoughs);
+        setFlatProductBatches(updatedProducts);
+        setAddModal(prev => ({ ...prev, isOpen: false, isLoading: false, selectedProductCode: '', quantity: 1 }));
+        
+        // すでに計画がSetされている場合は即時保存する
+        if (isPlanSet) {
+          await fetch('/api/production/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: targetDate,
+              flatBatches: updatedDoughs,
+              flatProductBatches: updatedProducts
+            })
+          });
+        }
+      } else {
+        alert(data.error || '追加バッチの生成に失敗しました');
+        setAddModal(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (e) {
+      alert('エラーが発生しました');
+      setAddModal(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
   const fetchProductionPlan = async (date: string) => {
     if (!date) return;
     setIsLoading(true);
@@ -340,6 +418,7 @@ export default function ProductionPlanPage() {
         if (data.isSet && data.savedFlatBatches) {
           const sortedSavedDoughs = [...data.savedFlatBatches];
           sortedSavedDoughs.sort((a, b) => {
+            if (a.isAdditional !== b.isAdditional) return a.isAdditional ? 1 : -1;
             const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
             if (doughCmp !== 0) return doughCmp;
             return a.batchNumber - b.batchNumber;
@@ -348,6 +427,7 @@ export default function ProductionPlanPage() {
           
           const sortedSavedProducts = data.savedFlatProductBatches || [];
           sortedSavedProducts.sort((a, b) => {
+            if (a.isAdditional !== b.isAdditional) return a.isAdditional ? 1 : -1;
             const doughCmp = a.doughCode.localeCompare(b.doughCode, 'en');
             if (doughCmp !== 0) return doughCmp;
             const prodCmp = a.productCode.localeCompare(b.productCode, 'en');
@@ -1223,6 +1303,14 @@ export default function ProductionPlanPage() {
               >
                 🔄 Reset
               </button>
+              {/* 追加仕込みボタン */}
+              <button 
+                onClick={handleOpenAddModal}
+                className="px-2 sm:px-3 py-2 bg-black hover:bg-slate-800 text-[#ADFF2F] font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1 sm:gap-2 transform active:scale-95 text-sm sm:text-base border border-[#ADFF2F]/30"
+                title="緊急で追加仕込みを行います"
+              >
+                ⚠️ 追加仕込み
+              </button>
             </div>
 
             {/* 新規追加：一括実行 / Excel出力 */}
@@ -1263,8 +1351,8 @@ export default function ProductionPlanPage() {
                 type="date" 
                 value={targetDate} 
                 onChange={handleDateChange} 
-                style={{ colorScheme: 'dark' }}
-                className="px-1 sm:px-2 py-1 bg-transparent text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 outline-none w-full sm:w-auto text-center"
+                
+                className="px-1 sm:px-2 py-1 bg-transparent text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 outline-none w-full sm:w-auto text-center [color-scheme:light] dark:[color-scheme:dark]"
               />
               <button 
                 onClick={() => shiftDate(1)}
@@ -1878,6 +1966,71 @@ export default function ProductionPlanPage() {
           </>
         )}
       </div>
+
+      {/* 追加仕込みモーダル */}
+      {addModal.isOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm"
+          onClick={() => setAddModal(prev => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-700 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-black text-[#ADFF2F] px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-black">⚠️ 追加仕込み</h3>
+              <button
+                onClick={() => setAddModal(prev => ({ ...prev, isOpen: false }))}
+                className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-colors font-bold text-lg text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {addModal.isLoading ? (
+                <div className="flex items-center justify-center py-8 gap-3">
+                  <div className="animate-spin text-3xl">🔄</div>
+                  <span className="text-slate-500 font-bold">処理中...</span>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">対象商品</label>
+                    <select
+                      className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-700 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-[#ADFF2F]"
+                      value={addModal.selectedProductCode}
+                      onChange={(e) => setAddModal(prev => ({ ...prev, selectedProductCode: e.target.value }))}
+                    >
+                      <option value="">商品を選択してください</option>
+                      {addModal.products.map(p => (
+                        <option key={p.product_code} value={p.product_code}>{p.product_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">追加個数</label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-700 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-[#ADFF2F]"
+                      value={addModal.quantity}
+                      onChange={(e) => setAddModal(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddBatchSubmit}
+                    disabled={!addModal.selectedProductCode || addModal.quantity < 1}
+                    className="w-full mt-4 py-3 bg-black hover:bg-slate-800 text-[#ADFF2F] font-black rounded-xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    この内容で仕込みを追加する
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
