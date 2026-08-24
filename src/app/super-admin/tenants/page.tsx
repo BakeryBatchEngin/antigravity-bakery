@@ -18,7 +18,7 @@ export default async function TenantsPage() {
 
   const db = await getDb();
   const tenants = await db.all(`
-    SELECT t.*, COUNT(s.id) as store_count, COUNT(DISTINCT u.id) as user_count
+    SELECT t.*, COUNT(DISTINCT s.id) as store_count, COUNT(DISTINCT u.id) as user_count
     FROM tenants t
     LEFT JOIN stores s ON s.tenant_id = t.id
     LEFT JOIN users u ON u.tenant_id = t.id
