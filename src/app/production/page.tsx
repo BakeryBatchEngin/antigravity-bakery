@@ -1202,7 +1202,7 @@ export default function ProductionPlanPage() {
   const selectedBatchDetail = useMemo(() => {
     if (!selectedBatchId) return null;
     
-    const isProduct = selectedBatchId.startsWith('PM-');
+    const isProduct = selectedBatchId.startsWith('PM-') || selectedBatchId.startsWith('ADD-P-');
 
     if (isProduct) {
       const batchInfo = flatProductBatches.find(b => b.id === selectedBatchId);

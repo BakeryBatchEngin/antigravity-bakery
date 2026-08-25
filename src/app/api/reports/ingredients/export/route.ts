@@ -245,15 +245,15 @@ export async function GET(request: Request) {
       // 表示順：生地バッチ → 商品バッチ、それぞれのアルファベット・数字順
       const executedIds = Array.from(usagesByBatch.keys());
       executedIds.sort((a: string, b: string) => {
-        const isAProduct = a.startsWith('PM-');
-        const isBProduct = b.startsWith('PM-');
+        const isAProduct = a.startsWith('PM-') || a.startsWith('ADD-P-');
+        const isBProduct = b.startsWith('PM-') || b.startsWith('ADD-P-');
         if (!isAProduct && isBProduct) return -1;
         if (isAProduct && !isBProduct) return 1;
         return a.localeCompare(b);
       });
 
       for (const bId of executedIds) {
-        const isDough = !bId.startsWith('PM-');
+        const isDough = !(bId.startsWith('PM-') || bId.startsWith('ADD-P-'));
         const batchUsages = usagesByBatch.get(bId) || [];
         
         // バッチの前に1行空ける
