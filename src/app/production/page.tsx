@@ -86,6 +86,7 @@ interface FlatBatch {
   currentFlourWeightGrams: number;
   selectedMixerId?: string;
   isAdditional?: boolean;
+  isRemake?: boolean;
 }
 
 interface FlatProductBatch {
@@ -108,6 +109,7 @@ interface FlatProductBatch {
   maxBatchQuantity: number;
   selectedMixerId?: string;
   isAdditional?: boolean;
+  isRemake?: boolean;
 }
 
 
@@ -298,12 +300,12 @@ export default function ProductionPlanPage() {
   const [addModal, setAddModal] = useState<{
     isOpen: boolean;
     products: any[];
-    items: { id: string, productCode: string, quantity: number }[];
+    items: { id: string, productCode: string, quantity: number, reason: 'additional' | 'remake' }[];
     isLoading: boolean;
   }>({
     isOpen: false,
     products: [],
-    items: [{ id: '1', productCode: '', quantity: 1 }],
+    items: [{ id: '1', productCode: '', quantity: 1, reason: 'additional' }],
     isLoading: false,
   });
 
@@ -336,7 +338,7 @@ export default function ProductionPlanPage() {
 
   // 追加仕込みモーダルを開く
   const handleOpenAddModal = async () => {
-    setAddModal(prev => ({ ...prev, isOpen: true, isLoading: true, items: [{ id: Date.now().toString(), productCode: '', quantity: 1 }] }));
+    setAddModal(prev => ({ ...prev, isOpen: true, isLoading: true, items: [{ id: Date.now().toString(), productCode: '', quantity: 1, reason: 'additional' }] }));
     try {
       const res = await fetch('/api/admin/products');
       const data = await res.json();
@@ -371,7 +373,7 @@ export default function ProductionPlanPage() {
         const res = await fetch('/api/production/additional-batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productCode: item.productCode, quantity: item.quantity })
+          body: JSON.stringify({ productCode: item.productCode, quantity: item.quantity, reason: item.reason })
         });
         const data = await res.json();
         
@@ -1466,6 +1468,11 @@ export default function ProductionPlanPage() {
                         {batch.doughCode}
                       </span>
                       <span className="font-bold text-base leading-tight break-all text-amber-600 dark:text-amber-500">{batch.doughName}</span>
+                      {batch.isAdditional && (
+                        <span className="ml-2 text-xs font-bold px-1.5 py-0.5 rounded bg-black/40 text-[#ADFF2F] border border-[#ADFF2F]/50">
+                          {batch.isRemake ? '再仕込み' : '追加オーダー'}
+                        </span>
+                      )}
                     </div>
 
                     {/* 2段目: 情報エリア */}
@@ -1633,6 +1640,11 @@ export default function ProductionPlanPage() {
                             {batch.productCode}
                           </span>
                           <span className="font-bold text-base leading-tight break-all text-emerald-600 dark:text-emerald-500">{batch.productName}</span>
+                          {batch.isAdditional && (
+                            <span className="ml-2 text-xs font-bold px-1.5 py-0.5 rounded bg-black/40 text-[#ADFF2F] border border-[#ADFF2F]/50">
+                              {batch.isRemake ? '再仕込み' : '追加オーダー'}
+                            </span>
+                          )}
                         </div>
 
                         {/* 2段目: 情報エリア */}
@@ -2036,6 +2048,38 @@ export default function ProductionPlanPage() {
                             }}
                           />
                         </div>
+                        <div className="w-28 flex flex-col gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`reason-${item.id}`}
+                              value="additional"
+                              checked={item.reason === 'additional'}
+                              onChange={(e) => {
+                                const newItems = [...addModal.items];
+                                newItems[index].reason = 'additional';
+                                setAddModal(prev => ({ ...prev, items: newItems }));
+                              }}
+                              className="accent-[#ADFF2F]"
+                            />
+                            追加オーダー
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`reason-${item.id}`}
+                              value="remake"
+                              checked={item.reason === 'remake'}
+                              onChange={(e) => {
+                                const newItems = [...addModal.items];
+                                newItems[index].reason = 'remake';
+                                setAddModal(prev => ({ ...prev, items: newItems }));
+                              }}
+                              className="accent-[#ADFF2F]"
+                            />
+                            再仕込み
+                          </label>
+                        </div>
                         {addModal.items.length > 1 && (
                           <button
                             onClick={() => {
@@ -2056,7 +2100,7 @@ export default function ProductionPlanPage() {
                     onClick={() => {
                       setAddModal(prev => ({
                         ...prev,
-                        items: [...prev.items, { id: Date.now().toString(), productCode: '', quantity: 1 }]
+                        items: [...prev.items, { id: Date.now().toString(), productCode: '', quantity: 1, reason: 'additional' }]
                       }));
                     }}
                     className="w-full py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-400 font-bold rounded-lg transition-colors flex items-center justify-center gap-2"

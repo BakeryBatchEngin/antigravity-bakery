@@ -90,7 +90,8 @@ export async function GET(request: Request) {
 
         const parts = pb.id.split('-');
         // PM-MH00010014-1 -> parts[1] is MH00010014
-        const pCode = parts.length > 1 ? parts[1] : 'UNKNOWN'; 
+        // For ADD-P-..., pb.productCode is directly available.
+        const pCode = pb.productCode || (parts.length > 1 ? parts[1] : 'UNKNOWN'); 
         
         if (!matrixMap.has(pCode)) {
           matrixMap.set(pCode, {
@@ -101,10 +102,12 @@ export async function GET(request: Request) {
         }
 
         if (executedSet.has(`${date}:${pb.id}`)) {
-          // 実行済みバッチの個数を加算
-          const item = matrixMap.get(pCode);
-          if (!item.dailyCounts[date]) item.dailyCounts[date] = 0;
-          item.dailyCounts[date] += (pb.currentBatchQuantity || 0);
+          // 再仕込みの場合は生産実績に加算しない
+          if (!pb.isRemake) {
+            const item = matrixMap.get(pCode);
+            if (!item.dailyCounts[date]) item.dailyCounts[date] = 0;
+            item.dailyCounts[date] += (pb.currentBatchQuantity || 0);
+          }
         }
       }
       

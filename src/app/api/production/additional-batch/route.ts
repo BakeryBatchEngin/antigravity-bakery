@@ -6,7 +6,7 @@ const MIXER_LIMIT_G = 50000; // 50kg
 
 export async function POST(request: Request) {
   try {
-    const { productCode, quantity } = await request.json();
+    const { productCode, quantity, reason } = await request.json();
     if (!productCode || !quantity) {
       return NextResponse.json({ error: '商品コードと個数が必要です' }, { status: 400 });
     }
@@ -95,7 +95,8 @@ export async function POST(request: Request) {
           originalTotalWeightGrams: Math.round(batchWeight * 10) / 10,
           currentFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
           baseIngredients: ingredients,
-          isAdditional: true
+          isAdditional: true,
+          isRemake: reason === 'remake'
         });
       }
     }
@@ -149,7 +150,8 @@ export async function POST(request: Request) {
           maxBatchQuantity: maxBatchesQty,
           doughDetails: doughDetails,
           baseIngredients: batchIngredients,
-          isAdditional: true
+          isAdditional: true,
+          isRemake: reason === 'remake'
         });
       }
     }
