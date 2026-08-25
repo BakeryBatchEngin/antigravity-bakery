@@ -1269,8 +1269,7 @@ export default function ProductionPlanPage() {
   
   // 小数第1位まで表示。小数部分がない場合は整数のみ表示（例: 100.0g → 100g, 15.3g → 15.3g）
   const fmtG = (g: number) => {
-    const rounded = Math.round(g * 10) / 10;
-    return Number.isInteger(rounded) ? rounded.toLocaleString() : rounded.toLocaleString('ja-JP', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return Math.round(g).toLocaleString();
   };
 
   const formatDetailWeight = (g: number) => {
