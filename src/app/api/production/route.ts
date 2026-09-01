@@ -131,6 +131,16 @@ export async function GET(request: Request) {
       totalAmountGrams: number;
     }> = {};
 
+    const subDoughRequirements: Record<string, {
+      doughCode: string;
+      doughName: string;
+      totalAmountGrams: number;
+      baseDoughId: string;
+      baseDoughName: string;
+      baseDoughAmount: number;
+      ingredients: any[];
+    }> = {};
+
     for (const product of orderedProducts) {
       const doughsForProduct = await db.all(`
         SELECT dough_code, dough_name, dough_amount
@@ -139,19 +149,103 @@ export async function GET(request: Request) {
       `, [product.product_code]);
 
       for (const pd of doughsForProduct) {
-        if (!doughRequirements[pd.dough_code]) {
-          doughRequirements[pd.dough_code] = {
-            doughCode: pd.dough_code,
-            doughName: pd.dough_name,
-            totalAmountGrams: 0,
-          };
+        const subDough = await db.get('SELECT * FROM sub_doughs WHERE dough_id = ?', [pd.dough_code]);
+        
+        if (subDough) {
+          const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ?', [pd.dough_code]);
+          
+          if (!subDoughRequirements[pd.dough_code]) {
+            subDoughRequirements[pd.dough_code] = {
+              doughCode: pd.dough_code,
+              doughName: pd.dough_name,
+              totalAmountGrams: 0,
+              baseDoughId: subDough.base_dough_id,
+              baseDoughName: subDough.base_dough_name,
+              baseDoughAmount: subDough.base_dough_amount,
+              ingredients: subIngs
+            };
+          }
+          const requiredSubDoughGrams = pd.dough_amount * product.total_quantity;
+          subDoughRequirements[pd.dough_code].totalAmountGrams += requiredSubDoughGrams;
+          
+          // ベース生地も必要な標準生地として加算
+          if (!doughRequirements[subDough.base_dough_id]) {
+            doughRequirements[subDough.base_dough_id] = {
+              doughCode: subDough.base_dough_id,
+              doughName: subDough.base_dough_name,
+              totalAmountGrams: 0,
+            };
+          }
+          
+          const recipeTotalGrams = subDough.base_dough_amount + subIngs.reduce((sum, ing) => sum + ing.ingredient_amount, 0);
+          const multiplier = requiredSubDoughGrams / recipeTotalGrams;
+          const requiredBaseGrams = subDough.base_dough_amount * multiplier;
+          
+          doughRequirements[subDough.base_dough_id].totalAmountGrams += requiredBaseGrams;
+          
+        } else {
+          if (!doughRequirements[pd.dough_code]) {
+            doughRequirements[pd.dough_code] = {
+              doughCode: pd.dough_code,
+              doughName: pd.dough_name,
+              totalAmountGrams: 0,
+            };
+          }
+          doughRequirements[pd.dough_code].totalAmountGrams += (pd.dough_amount * product.total_quantity);
         }
-        // 製品1個あたりの必要生地量 × 注文数
-        doughRequirements[pd.dough_code].totalAmountGrams += (pd.dough_amount * product.total_quantity);
       }
     }
 
     const productionPlan = [];
+
+    for (const doughCode in subDoughRequirements) {
+      const req = subDoughRequirements[doughCode];
+      const totalAmountToMix = req.totalAmountGrams;
+      
+      const recipeTotalGrams = req.baseDoughAmount + req.ingredients.reduce((sum: number, item: any) => sum + item.ingredient_amount, 0);
+      const totalBakersPercent = req.ingredients.reduce((sum: number, item: any) => sum + ((item.ingredient_amount / req.baseDoughAmount) * 100), 0);
+      const flourBakersPercent = 100;
+      
+      const totalFlourWeightGrams = totalAmountToMix * (req.baseDoughAmount / recipeTotalGrams);
+      const NumberOfBatches = Math.ceil(totalAmountToMix / MIXER_LIMIT_G);
+      const batches = [];
+      let remainingMass = totalAmountToMix;
+
+      for (let i = 0; i < NumberOfBatches; i++) {
+        const batchWeight = Math.min(remainingMass, MIXER_LIMIT_G);
+        remainingMass -= batchWeight;
+        const multiplier = batchWeight / recipeTotalGrams;
+        const batchFlourWeight = req.baseDoughAmount * multiplier;
+
+        const ingredients = req.ingredients.map(ing => {
+          return {
+            ingredientCode: ing.ingredient_code,
+            ingredientName: ing.ingredient_name,
+            bakersPercent: (ing.ingredient_amount / req.baseDoughAmount) * 100,
+            requiredWeightGrams: Math.round(ing.ingredient_amount * multiplier * 10) / 10
+          };
+        });
+
+        batches.push({
+          batchNumber: i + 1,
+          batchFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
+          batchTotalWeightGrams: Math.round(batchWeight * 10) / 10,
+          ingredients: ingredients
+        });
+      }
+
+      productionPlan.push({
+        doughCode: req.doughCode,
+        doughName: req.doughName,
+        isSubDough: true,
+        baseDoughId: req.baseDoughId,
+        baseDoughName: req.baseDoughName,
+        totalRequiredGrams: Math.round(totalAmountToMix * 10) / 10,
+        totalFlourWeightGrams: Math.round(totalFlourWeightGrams * 10) / 10,
+        totalBakersPercent: totalBakersPercent,
+        batches: batches
+      });
+    }
 
     for (const doughCode in doughRequirements) {
       const req = doughRequirements[doughCode];
@@ -237,7 +331,10 @@ export async function GET(request: Request) {
       // 最新の生地名称をマスターから確実に取得して連結
       const latestDoughNames = [];
       for (const d of doughsForProduct) {
-        const masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+        let masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+        if (!masterDough) {
+          masterDough = await db.get('SELECT dough_name FROM sub_doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+        }
         latestDoughNames.push(masterDough ? masterDough.dough_name : d.dough_name);
       }
       

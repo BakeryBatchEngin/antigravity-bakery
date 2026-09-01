@@ -137,7 +137,7 @@ export default function LoginPage() {
         {/* バージョン表示 */}
         <div className="text-center mt-10">
           <p className="text-slate-500 text-sm font-medium">
-            Ver. 3.01
+            Ver. 3.10
           </p>
         </div>
 

@@ -28,6 +28,9 @@ interface DoughBatch {
 interface ProductionPlanItem {
   doughCode: string;
   doughName: string;
+  isSubDough?: boolean;
+  baseDoughId?: string;
+  baseDoughName?: string;
   totalRequiredGrams: number;
   totalFlourWeightGrams: number;
   totalBakersPercent: number;
@@ -78,6 +81,8 @@ interface FlatBatch {
   type: 'dough';
   doughCode: string;
   doughName: string;
+  isSubDough?: boolean;
+  baseDoughName?: string;
   totalBakersPercent: number;
   batchNumber: number;
   originalFlourWeightGrams: number;
@@ -477,11 +482,13 @@ export default function ProductionPlanPage() {
               const id = `${plan.doughCode}-${batch.batchNumber}`;
               if (!firstBatchId) firstBatchId = id;
               initialDoughBatches.push({
-                id,
-                type: 'dough',
-                doughCode: plan.doughCode,
-                doughName: plan.doughName,
-                totalBakersPercent: plan.totalBakersPercent,
+                  id,
+                  type: 'dough',
+                  doughCode: plan.doughCode,
+                  doughName: plan.doughName,
+                  isSubDough: plan.isSubDough,
+                  baseDoughName: plan.baseDoughName,
+                  totalBakersPercent: plan.totalBakersPercent,
                 batchNumber: batch.batchNumber,
                 originalFlourWeightGrams: batch.batchFlourWeightGrams,
                 originalTotalWeightGrams: batch.batchTotalWeightGrams,
@@ -1467,6 +1474,11 @@ export default function ProductionPlanPage() {
                         {batch.doughCode}
                       </span>
                       <span className="font-bold text-base leading-tight break-all text-amber-600 dark:text-amber-500">{batch.doughName}</span>
+                      {batch.isSubDough && (
+                        <span className="ml-2 text-xs font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200">
+                          サブ生地
+                        </span>
+                      )}
                       {batch.isAdditional && (
                         <span className="ml-2 text-xs font-bold px-1.5 py-0.5 rounded bg-black/40 text-[#ADFF2F] border border-[#ADFF2F]/50">
                           {batch.isRemake ? '再仕込み' : '追加オーダー'}
@@ -1500,7 +1512,7 @@ export default function ProductionPlanPage() {
                       
                       <div className="flex items-start gap-1.5">
                         <div className="flex flex-col items-end">
-                          <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-amber-600 dark:text-amber-500">粉量</span>
+                          <span className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5 text-amber-600 dark:text-amber-500">{batch.isSubDough ? 'ベース生地量' : '粉量'}</span>
                           <div className="text-base font-black tracking-tight leading-none text-amber-600 dark:text-amber-500 mb-1">
                             {(currentFlourWeight / 1000).toFixed(0)}<span className="text-[9px] font-bold ml-0.5 opacity-80">kg</span>
                           </div>
@@ -1839,7 +1851,7 @@ export default function ProductionPlanPage() {
                       {selectedBatchDetail.type === 'dough' ? (
                         <>
                           <div className="text-center">
-                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">粉量</div>
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{selectedBatchDetail?.isSubDough ? 'ベース生地量' : '粉量'}</div>
                             <div className="text-2xl font-black text-slate-700">
                               {fmtG(selectedBatchDetail.currentFlourWeightGrams)} <span className="text-xl text-slate-400">g</span>
                             </div>
@@ -1922,7 +1934,43 @@ export default function ProductionPlanPage() {
                             <td className="py-5 px-6 text-right"></td>
                           </tr>
                         )}
-                        {selectedBatchDetail.ingredients.map((ing, idx) => {
+                        {selectedBatchDetail.type === 'dough' && selectedBatchDetail.isSubDough && (
+                            <tr 
+                              onClick={() => toggleIngredientCheck(selectedBatchDetail.id, '__BASE_DOUGH__')}
+                              className={`
+                                border-b border-slate-200/80 hover:bg-slate-50 transition-all cursor-pointer group
+                                ${checkedIngredients[selectedBatchDetail.id]?.__BASE_DOUGH__ ? 'opacity-40 bg-slate-100 grayscale' : 'bg-indigo-50/30'}
+                              `}
+                            >
+                              <td className={`py-5 px-6 font-bold text-xl sm:text-2xl transition-colors ${checkedIngredients[selectedBatchDetail.id]?.__BASE_DOUGH__ ? 'text-slate-400 line-through' : 'text-indigo-700'}`}>
+                                🍞 {selectedBatchDetail.baseDoughName || 'ベース生地'}
+                              </td>
+                              <td className="py-5 px-6 text-center text-slate-500 font-bold text-lg">
+                                -
+                              </td>
+                              <td className="py-5 px-6 text-right">
+                                <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tighter transition-colors ${checkedIngredients[selectedBatchDetail.id]?.__BASE_DOUGH__ ? 'text-slate-400' : 'text-indigo-600 group-hover:text-indigo-500'}`}>
+                                  {fmtG(selectedBatchDetail.currentFlourWeightGrams)}
+                                </span>
+                                <span className={`text-xl sm:text-2xl ml-2 font-bold text-slate-400`}>
+                                  g
+                                </span>
+                              </td>
+                              <td className="py-5 px-6 text-right">
+                                <div className={`
+                                  w-10 h-10 rounded-md border-2 flex items-center justify-center transition-all mx-auto shadow-sm
+                                  ${checkedIngredients[selectedBatchDetail.id]?.__BASE_DOUGH__ 
+                                    ? 'bg-amber-500 border-amber-500 text-white shadow-inner' 
+                                    : 'bg-white border-slate-300 group-hover:border-amber-400 group-hover:bg-amber-50 text-transparent'}
+                                `}>
+                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                  </svg>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {selectedBatchDetail.ingredients.map((ing, idx) => {
                           const isChecked = checkedIngredients[selectedBatchDetail.id]?.[ing.ingredientCode] || false;
                           
                           // @ts-ignore
@@ -1942,7 +1990,7 @@ export default function ProductionPlanPage() {
                               </td>
                               {selectedBatchDetail.type === 'dough' && (
                                 <td className="py-5 px-6 text-center text-slate-500 font-bold text-lg">
-                                  {bakersPercent}%
+                                  {typeof bakersPercent === 'number' ? (Math.round(bakersPercent * 10) / 10) : bakersPercent}%
                                 </td>
                               )}
                               <td className="py-5 px-6 text-right">
