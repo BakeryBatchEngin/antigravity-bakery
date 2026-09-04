@@ -59,6 +59,11 @@ export async function POST(request: Request) {
       if (subDough) {
         // Sub-dough
         const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ?', [pd.dough_code]);
+          subIngs.sort((a, b) => {
+            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+            return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
+          });
         const recipeTotalGrams = subDough.base_dough_amount + subIngs.reduce((sum: number, item: any) => sum + item.ingredient_amount, 0);
         const totalBakersPercent = subIngs.reduce((sum: number, item: any) => sum + ((item.ingredient_amount / subDough.base_dough_amount) * 100), 0) + 100;
         
@@ -105,6 +110,11 @@ export async function POST(request: Request) {
           FROM doughs d
           WHERE d.dough_id = ?
         `, [subDough.base_dough_id]);
+          recipeIngredients.sort((a, b) => {
+            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+            return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+          });
 
         if (recipeIngredients.length > 0) {
           const baseLatestName = recipeIngredients[0].dough_name || subDough.base_dough_name;
@@ -152,6 +162,11 @@ export async function POST(request: Request) {
           FROM doughs d
           WHERE d.dough_id = ?
         `, [pd.dough_code]);
+          recipeIngredients.sort((a, b) => {
+            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+            return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+          });
 
         if (recipeIngredients.length === 0) continue; 
         

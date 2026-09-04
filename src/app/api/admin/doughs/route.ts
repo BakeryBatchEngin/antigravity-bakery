@@ -72,6 +72,16 @@ export async function GET() {
     });
 
     const doughs = Array.from(doughsMap.values());
+    doughs.forEach((d: any) => {
+      d.ingredients.sort((a: any, b: any) => {
+        if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+        if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+        
+        const valA = a.bakers_percent ?? a.ingredient_amount ?? 0;
+        const valB = b.bakers_percent ?? b.ingredient_amount ?? 0;
+        return valB - valA;
+      });
+    });
     return NextResponse.json({ success: true, doughs });
   } catch (error) {
     console.error('Failed to fetch doughs:', error);

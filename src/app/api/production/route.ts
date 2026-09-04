@@ -153,6 +153,11 @@ export async function GET(request: Request) {
         
         if (subDough) {
           const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ?', [pd.dough_code]);
+            subIngs.sort((a, b) => {
+              if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+              if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+              return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
+            });
           
           if (!subDoughRequirements[pd.dough_code]) {
             subDoughRequirements[pd.dough_code] = {
@@ -256,6 +261,11 @@ export async function GET(request: Request) {
         FROM doughs d
         WHERE d.dough_id = ?
       `, [doughCode]);
+        recipeIngredients.sort((a, b) => {
+          if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+          if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+          return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+        });
 
       if (recipeIngredients.length === 0) continue; 
       

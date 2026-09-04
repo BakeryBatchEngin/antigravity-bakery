@@ -521,8 +521,8 @@ export default function DoughsMasterPage() {
                           <td className="pt-1">合計</td>
                           <td className="pt-1 text-right">
                             {dough.type === 'standard' 
-                              ? `${dough.ingredients.reduce((sum, i) => sum + (i.bakers_percent||0), 0)}%`
-                              : `${(dough.base_dough_amount||0) + dough.ingredients.reduce((sum, i) => sum + (i.ingredient_amount||0), 0)}g`
+                              ? `${Math.round(dough.ingredients.reduce((sum, i) => sum + (i.bakers_percent||0), 0) * 10) / 10}%`
+                              : `${Math.round(((dough.base_dough_amount||0) + dough.ingredients.reduce((sum, i) => sum + (i.ingredient_amount||0), 0)) * 10) / 10}g`
                             }
                           </td>
                         </tr>
