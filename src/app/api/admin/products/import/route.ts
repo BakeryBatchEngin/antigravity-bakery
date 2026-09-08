@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         await db.run(`
           INSERT INTO products (product_code, product_name, retail_price, wholesale_price, tenant_id)
           VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(product_code) DO UPDATE SET
+          ON CONFLICT(product_code, tenant_id) DO UPDATE SET
             product_name = excluded.product_name,
             retail_price = excluded.retail_price,
             wholesale_price = excluded.wholesale_price
