@@ -105,14 +105,19 @@ export async function POST(request: Request) {
       await db.run(`
         INSERT INTO products (product_code, product_name, retail_price, wholesale_price, tenant_id)
         VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(product_code) DO UPDATE SET
+        ON CONFLICT(product_code, tenant_id) DO UPDATE SET
           product_name = excluded.product_name,
           retail_price = excluded.retail_price,
           wholesale_price = excluded.wholesale_price
       `, [product_code, product_name, retail_price || 0, wholesale_price || 0, tenantId]);
 
-      await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
-      await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+      if (tenantId) {
+          await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+        } else {
+          await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
+          await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+        }
 
       if (hasDough) {
         for (const d of doughs) {
@@ -180,9 +185,16 @@ export async function DELETE(request: Request) {
 
     await db.run('BEGIN TRANSACTION');
     try {
-      await db.run('DELETE FROM products WHERE product_code = ?', [code]);
-      await db.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
-      await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
+      const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
+        if (tenantId) {
+          await db.run('DELETE FROM products WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+        } else {
+          await db.run('DELETE FROM products WHERE product_code = ?', [code]);
+          await db.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
+          await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
+        }
       await db.run('COMMIT');
       return NextResponse.json({ success: true });
     } catch (e) {
