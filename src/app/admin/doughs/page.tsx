@@ -1,4 +1,5 @@
 'use client';
+import SearchableSelect from '@/components/SearchableSelect';
 
 import { useState, useEffect, useRef } from 'react';
 
@@ -350,25 +351,20 @@ export default function DoughsMasterPage() {
               <div className="border border-indigo-200 bg-indigo-50/30 rounded-lg p-4">
                 <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-200 pb-2">ベース生地の設定</h3>
                 <div className="flex flex-col sm:flex-row gap-4 items-center">
-                  <select
-                    value={formData.base_dough_id || ''}
-                    onChange={(e) => {
-                      const selected = doughs.find(d => d.dough_id === e.target.value);
-                      setFormData({
-                        ...formData,
-                        base_dough_id: e.target.value,
-                        base_dough_name: selected?.dough_name || ''
-                      });
-                    }}
-                    className="flex-[2] w-full px-3 py-2 text-slate-900 border border-slate-300 rounded focus:ring-indigo-500 outline-none"
-                  >
-                    <option value="">-- ベースとなる生地を選択 --</option>
-                    {doughs.filter(d => d.type === 'standard').map(d => (
-                      <option key={d.dough_id} value={d.dough_id}>
-                        {d.dough_name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect 
+                      options={doughs.map(d => ({value: d.dough_id, label: d.dough_name}))}
+                      value={formData.base_dough_id || ''}
+                      onChange={(val: string) => {
+                        const selected = doughs.find(d => d.dough_id === val);
+                        setFormData({
+                          ...formData,
+                          base_dough_id: val,
+                          base_dough_name: selected?.dough_name || ''
+                        });
+                      }}
+                      className="flex-[2] w-full"
+                      placeholder="ベース生地を検索・選択..."
+                    />
                   <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-indigo-500 bg-white">
                     <input 
                       type="number"
@@ -400,19 +396,7 @@ export default function DoughsMasterPage() {
                 )}
                 {formData.ingredients.map((ing, idx) => (
                   <div key={idx} className="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 border border-amber-100 rounded shadow-sm">
-                    <select
-                      value={ing.ingredient_code}
-                      onChange={(e) => updateIngredientRow(idx, 'ingredient_code', e.target.value)}
-                      className="flex-[2] w-full px-3 py-2 text-slate-900 border border-slate-300 rounded focus:ring-amber-500 outline-none"
-                      required
-                    >
-                      <option value="">-- 材料を選択 --</option>
-                      {masterIngredients.map(mi => (
-                        <option key={mi.ingredient_code} value={mi.ingredient_code}>
-                          {mi.ingredient_code} : {mi.ingredient_name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect options={masterIngredients.map(mi => ({value: mi.ingredient_code, label: `${mi.ingredient_code} : ${mi.ingredient_name}`}))} value={ing.ingredient_code} onChange={(val: string) => updateIngredientRow(idx, 'ingredient_code', val)} className="flex-[2] w-full" placeholder="材料を検索・選択..." />
                     
                     <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-amber-500 bg-white">
                       <input 

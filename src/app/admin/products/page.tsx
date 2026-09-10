@@ -1,4 +1,5 @@
 'use client';
+import SearchableSelect from '@/components/SearchableSelect';
 
 import { useState, useEffect, useRef } from 'react';
 
@@ -398,19 +399,7 @@ export default function ProductsMasterPage() {
                   )}
                   {formData.doughs.map((d, idx) => (
                     <div key={idx} className="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 border border-blue-100 rounded shadow-sm">
-                      <select
-                        value={d.dough_code}
-                        onChange={(e) => updateDoughRow(idx, 'dough_code', e.target.value)}
-                        className="flex-[2] w-full px-3 py-2 text-slate-900 border border-slate-300 rounded focus:ring-blue-500 outline-none"
-                        required
-                      >
-                        <option value="">-- 生地を選択 --</option>
-                        {masterDoughs.map(md => (
-                          <option key={md.dough_id} value={md.dough_id}>
-                            {md.dough_id} : {md.dough_name}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect options={masterDoughs.map(md => ({value: md.dough_id, label: `${md.dough_id} : ${md.dough_name}`}))} value={d.dough_code} onChange={(val: string) => updateDoughRow(idx, 'dough_code', val)} className="flex-[2] w-full" placeholder="生地を検索・選択..." />
                       <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-blue-500 bg-white">
                          <input 
                           type="number"
@@ -445,19 +434,7 @@ export default function ProductsMasterPage() {
                   )}
                   {formData.ingredients.map((ing, idx) => (
                     <div key={idx} className="flex flex-col sm:flex-row gap-2 items-center bg-white p-2 border border-green-100 rounded shadow-sm">
-                      <select
-                        value={ing.ingredient_code}
-                        onChange={(e) => updateIngredientRow(idx, 'ingredient_code', e.target.value)}
-                        className="flex-[2] w-full px-3 py-2 text-slate-900 border border-slate-300 rounded focus:ring-green-500 outline-none"
-                        required
-                      >
-                        <option value="">-- 副材料を選択 --</option>
-                        {masterIngredients.map(mi => (
-                          <option key={mi.ingredient_code} value={mi.ingredient_code}>
-                            {mi.ingredient_code} : {mi.ingredient_name}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect options={masterIngredients.map(mi => ({value: mi.ingredient_code, label: `${mi.ingredient_code} : ${mi.ingredient_name}`}))} value={ing.ingredient_code} onChange={(val: string) => updateIngredientRow(idx, 'ingredient_code', val)} className="flex-[2] w-full" placeholder="材料を検索・選択..." />
                       
                       <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-green-500 bg-white">
                         <input 
