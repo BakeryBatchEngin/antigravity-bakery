@@ -97,16 +97,16 @@ export async function POST(request: Request) {
 
         for (const d of data.doughs) {
           await db.run(`
-            INSERT INTO product_doughs (product_code, dough_code, dough_name, dough_amount, tenant_id)
-            VALUES (?, ?, ?, ?, ?)
-          `, [product_code, d.dough_code, d.dough_name, d.dough_amount, tenantId]);
+            INSERT INTO product_doughs (product_code, product_name, dough_code, dough_name, dough_amount, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [product_code, data.product_name, d.dough_code, d.dough_name, d.dough_amount, tenantId]);
         }
 
         for (const i of data.ingredients) {
           await db.run(`
-            INSERT INTO product_ingredients (product_code, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
-            VALUES (?, ?, ?, ?, ?)
-          `, [product_code, i.ingredient_code, i.ingredient_name, i.ingredient_amount, tenantId]);
+            INSERT INTO product_ingredients (product_code, product_name, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [product_code, data.product_name, i.ingredient_code, i.ingredient_name, i.ingredient_amount, tenantId]);
         }
         
         rowCount++;
