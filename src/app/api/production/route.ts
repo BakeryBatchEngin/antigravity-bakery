@@ -71,12 +71,12 @@ export async function GET(request: Request) {
     const masterProductNames = await db.all(`
       SELECT product_code, MAX(product_name) as master_product_name
       FROM (
-        SELECT product_code, product_name FROM product_doughs
+        SELECT product_code, product_name FROM product_doughs WHERE tenant_id = ?
         UNION ALL
-        SELECT product_code, product_name FROM product_ingredients
+        SELECT product_code, product_name FROM product_ingredients WHERE tenant_id = ?
       )
       GROUP BY product_code
-    `);
+    `, [user.tenant_id, user.tenant_id]);
     const masterNameMap: Record<string, string> = {};
     masterProductNames.forEach((row: any) => {
       masterNameMap[row.product_code] = row.master_product_name;
@@ -145,14 +145,14 @@ export async function GET(request: Request) {
       const doughsForProduct = await db.all(`
         SELECT dough_code, dough_name, dough_amount
         FROM product_doughs
-        WHERE product_code = ?
-      `, [product.product_code]);
+        WHERE product_code = ? AND tenant_id = ?
+      `, [product.product_code, user.tenant_id]);
 
       for (const pd of doughsForProduct) {
-        const subDough = await db.get('SELECT * FROM sub_doughs WHERE dough_id = ?', [pd.dough_code]);
+        const subDough = await db.get('SELECT * FROM sub_doughs WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
         
         if (subDough) {
-          const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ?', [pd.dough_code]);
+          const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
             subIngs.sort((a, b) => {
               if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
               if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
@@ -259,8 +259,8 @@ export async function GET(request: Request) {
       const recipeIngredients = await db.all(`
         SELECT d.ingredient_code, d.ingredient_name, d.bakers_percent
         FROM doughs d
-        WHERE d.dough_id = ?
-      `, [doughCode]);
+        WHERE d.dough_id = ? AND d.tenant_id = ?
+        `, [doughCode, user.tenant_id]);
         recipeIngredients.sort((a, b) => {
           if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
           if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
@@ -327,23 +327,23 @@ export async function GET(request: Request) {
       const productIngredients = await db.all(`
         SELECT ingredient_code, ingredient_name, ingredient_amount
         FROM product_ingredients
-        WHERE product_code = ?
-      `, [product.product_code]);
+        WHERE product_code = ? AND tenant_id = ?
+      `, [product.product_code, user.tenant_id]);
 
       const doughsForProduct = await db.all(`
         SELECT dough_code, dough_name, dough_amount
         FROM product_doughs
-        WHERE product_code = ?
-      `, [product.product_code]);
+        WHERE product_code = ? AND tenant_id = ?
+      `, [product.product_code, user.tenant_id]);
 
       if (productIngredients.length === 0 && doughsForProduct.length === 0) continue;
 
       // 最新の生地名称をマスターから確実に取得して連結
       const latestDoughNames = [];
       for (const d of doughsForProduct) {
-        let masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+        let masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, user.tenant_id]);
         if (!masterDough) {
-          masterDough = await db.get('SELECT dough_name FROM sub_doughs WHERE dough_id = ? LIMIT 1', [d.dough_code]);
+          masterDough = await db.get('SELECT dough_name FROM sub_doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, user.tenant_id]);
         }
         latestDoughNames.push(masterDough ? masterDough.dough_name : d.dough_name);
       }
