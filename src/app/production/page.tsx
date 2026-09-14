@@ -373,6 +373,11 @@ export default function ProductionPlanPage() {
     try {
       const endpoint = type === 'product' ? '/api/admin/products' : '/api/admin/doughs';
       const res = await fetch(endpoint);
+      
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status} ${res.statusText}`);
+      }
+      
       const data = await res.json();
       
       let targetItem = null;
@@ -381,21 +386,28 @@ export default function ProductionPlanPage() {
       if (type === 'product' && data.products) {
         targetItem = data.products.find((p: any) => p.product_code === code || (p.aliases && p.aliases.includes(code)));
         if (targetItem) {
-          // 商品のレシピは、doughCodeと総量などを元に簡易表示
-          recipeItems = [
-            { name: `生地 (${targetItem.dough_code})`, amount: `${targetItem.dough_weight_grams}`, unit: 'g / 個' }
-          ];
+          // 商品の構成レシピ
+          if (targetItem.doughs && targetItem.doughs.length > 0) {
+            targetItem.doughs.forEach((d: any) => {
+              recipeItems.push({ name: `🍞 ${d.dough_name || d.dough_code} (生地)`, amount: `${d.dough_amount}`, unit: 'g / 個' });
+            });
+          }
+          if (targetItem.ingredients && targetItem.ingredients.length > 0) {
+            targetItem.ingredients.forEach((ing: any) => {
+              recipeItems.push({ name: `🧂 ${ing.ingredient_name || ing.ingredient_code} (副材料)`, amount: `${ing.ingredient_amount}`, unit: 'g / 個' });
+            });
+          }
         }
       } else if (type === 'dough' && data.doughs) {
-        const doughGroup = data.doughs.find((d: any) => d.dough_code === code);
-        if (doughGroup) {
-          targetItem = doughGroup.rows && doughGroup.rows[0]; // 最初の行からmemo等を拾う
-          if (doughGroup.rows) {
-            recipeItems = doughGroup.rows.map((r: any) => ({
-              name: r.ingredient_name,
-              amount: `${r.bakers_percent}`,
-              unit: '%'
-            }));
+        targetItem = data.doughs.find((d: any) => d.dough_id === code || d.dough_code === code);
+        if (targetItem) {
+          if (targetItem.type === 'sub_dough' && targetItem.base_dough_id) {
+             recipeItems.push({ name: `🍞 ${targetItem.base_dough_name || targetItem.base_dough_id} (ベース生地)`, amount: `${targetItem.base_dough_amount}`, unit: '%' });
+          }
+          if (targetItem.ingredients && targetItem.ingredients.length > 0) {
+            targetItem.ingredients.forEach((ing: any) => {
+              recipeItems.push({ name: `🧂 ${ing.ingredient_name}`, amount: `${ing.bakers_percent ?? ing.ingredient_amount}`, unit: targetItem.type === 'sub_dough' ? '%' : '%' });
+            });
           }
         }
       }
@@ -413,7 +425,7 @@ export default function ProductionPlanPage() {
       }
     } catch (err) {
       console.error(err);
-      setInfoModal(prev => ({ ...prev, isLoading: false, memo: '情報の取得に失敗しました' }));
+      setInfoModal(prev => ({ ...prev, isLoading: false, memo: '情報の取得に失敗しました。コンソールを確認してください。' }));
     }
   };
 
