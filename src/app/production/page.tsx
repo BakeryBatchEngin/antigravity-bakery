@@ -314,6 +314,24 @@ export default function ProductionPlanPage() {
     isLoading: false,
   });
 
+  // マスタ情報表示用モーダル状態
+  const [infoModal, setInfoModal] = useState<{
+    isOpen: boolean;
+    type: 'product' | 'dough';
+    code: string;
+    name: string;
+    memo?: string;
+    informartUrl?: string;
+    recipeItems?: { name: string, amount: string, unit: string }[];
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    type: 'product',
+    code: '',
+    name: '',
+    isLoading: false,
+  });
+
   // 初回レンダリング時にURLのdateパラメータがあればそれを、なければ今日の日付をセットし、データをフェッチ
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -338,6 +356,64 @@ export default function ProductionPlanPage() {
       }
     } catch {
       setBreakdownModal(prev => ({ ...prev, items: [], isLoading: false }));
+    }
+  };
+
+  // マスタ情報を取得してモーダルを開く
+  const handleShowInfo = async (e: React.MouseEvent, type: 'product' | 'dough', code: string, name: string) => {
+    e.stopPropagation();
+    setInfoModal({
+      isOpen: true,
+      type,
+      code,
+      name,
+      isLoading: true
+    });
+    
+    try {
+      const endpoint = type === 'product' ? '/api/admin/products' : '/api/admin/doughs';
+      const res = await fetch(endpoint);
+      const data = await res.json();
+      
+      let targetItem = null;
+      let recipeItems: { name: string, amount: string, unit: string }[] = [];
+
+      if (type === 'product' && data.products) {
+        targetItem = data.products.find((p: any) => p.product_code === code || (p.aliases && p.aliases.includes(code)));
+        if (targetItem) {
+          // 商品のレシピは、doughCodeと総量などを元に簡易表示
+          recipeItems = [
+            { name: `生地 (${targetItem.dough_code})`, amount: `${targetItem.dough_weight_grams}`, unit: 'g / 個' }
+          ];
+        }
+      } else if (type === 'dough' && data.doughs) {
+        const doughGroup = data.doughs.find((d: any) => d.dough_code === code);
+        if (doughGroup) {
+          targetItem = doughGroup.rows && doughGroup.rows[0]; // 最初の行からmemo等を拾う
+          if (doughGroup.rows) {
+            recipeItems = doughGroup.rows.map((r: any) => ({
+              name: r.ingredient_name,
+              amount: `${r.bakers_percent}`,
+              unit: '%'
+            }));
+          }
+        }
+      }
+
+      if (targetItem) {
+        setInfoModal(prev => ({
+          ...prev,
+          memo: targetItem.memo,
+          informartUrl: targetItem.informart_url,
+          recipeItems,
+          isLoading: false
+        }));
+      } else {
+        setInfoModal(prev => ({ ...prev, isLoading: false, memo: '情報が見つかりませんでした' }));
+      }
+    } catch (err) {
+      console.error(err);
+      setInfoModal(prev => ({ ...prev, isLoading: false, memo: '情報の取得に失敗しました' }));
     }
   };
 
@@ -1829,13 +1905,33 @@ export default function ProductionPlanPage() {
                 <div className="w-full max-w-3xl bg-white rounded-lg outline outline-4 outline-amber-400 outline-offset-0 overflow-hidden shadow-2xl">
                   
                   {/* 詳細ヘッダー */}
-                  <div className="px-6 py-5 flex items-center gap-4 bg-white">
-                    <div className="bg-amber-100 text-amber-900 font-black text-xl px-4 py-2 rounded-lg border border-amber-300">
-                      {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode : selectedBatchDetail.doughCode}
+                  <div className="px-6 py-5 flex items-center justify-between gap-4 bg-white">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-amber-100 text-amber-900 font-black text-xl px-4 py-2 rounded-lg border border-amber-300">
+                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode : selectedBatchDetail.doughCode}
+                      </div>
+                      <h3 className="text-3xl font-black text-slate-900 tracking-wide">
+                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName : selectedBatchDetail.doughName}
+                      </h3>
                     </div>
-                    <h3 className="text-3xl font-black text-slate-900 tracking-wide">
-                      {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName : selectedBatchDetail.doughName}
-                    </h3>
+                    {/* 商品バッチ または 生地バッチ の場合はマスタ情報ボタンを表示 */}
+                    {(selectedBatchDetail.type === 'product' || selectedBatchDetail.type === 'dough') && (
+                      <button
+                        onClick={(e) => handleShowInfo(
+                          e, 
+                          selectedBatchDetail.type as 'product' | 'dough', 
+                          selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode! : selectedBatchDetail.doughCode!, 
+                          selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName! : selectedBatchDetail.doughName!
+                        )}
+                        className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-bold transition-colors shadow-sm"
+                        title="マスタ情報を見る"
+                      >
+                        <span className="text-lg">ℹ️</span>
+                        <span className="hidden sm:inline">
+                          {selectedBatchDetail.type === 'product' ? '商品情報・メモ' : '生地情報・メモ'}
+                        </span>
+                      </button>
+                    )}
                   </div>
 
                   {/* サブヘッダー (ミキシング重量/個数) */}
@@ -2164,6 +2260,102 @@ export default function ProductionPlanPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* マスタ情報表示モーダル (商品・生地共用) */}
+      {infoModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setInfoModal(prev => ({ ...prev, isOpen: false }))}></div>
+          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col h-full max-h-[85vh]">
+              {/* モーダルヘッダー */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-indigo-50 dark:bg-slate-900/50">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-inner border border-indigo-200 dark:border-indigo-800">
+                    ℹ️
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">
+                      {infoModal.type === 'product' ? '商品マスタ情報' : '生地マスタ情報'}
+                    </h2>
+                    <p className="text-xs font-bold text-indigo-600/70 dark:text-indigo-400/70">{infoModal.code} : {infoModal.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setInfoModal(prev => ({ ...prev, isOpen: false }))}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white dark:bg-slate-800 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* モーダルボディ */}
+              <div className="p-6 overflow-y-auto">
+                {infoModal.isLoading ? (
+                  <div className="flex items-center justify-center py-8 gap-3">
+                    <div className="animate-spin text-3xl">🔄</div>
+                    <span className="text-slate-500 font-bold">読み込み中...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* レシピ一覧表示 */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">構成レシピ・使用材料</p>
+                      {infoModal.recipeItems && infoModal.recipeItems.length > 0 ? (
+                        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                          <table className="w-full text-sm">
+                            <tbody>
+                              {infoModal.recipeItems.map((item, idx) => (
+                                <tr key={idx} className="border-b last:border-0 border-slate-100 dark:border-slate-700">
+                                  <td className="py-2 px-4 text-slate-700 dark:text-slate-300">{item.name}</td>
+                                  <td className="py-2 px-4 text-right font-bold text-slate-900 dark:text-white">
+                                    {item.amount}<span className="text-slate-400 font-normal ml-1">{item.unit}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700 text-center">レシピ情報がありません</p>
+                      )}
+                    </div>
+
+                    {/* メモ表示 */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">メモ・コメント</p>
+                      {infoModal.memo ? (
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 text-sm text-yellow-900 dark:text-yellow-100 whitespace-pre-wrap shadow-sm">
+                          {infoModal.memo}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700 text-center">メモは登録されていません</p>
+                      )}
+                    </div>
+                    
+                    {/* URL表示 */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">外部リンク (Informart等)</p>
+                      {infoModal.informartUrl ? (
+                        <a 
+                          href={infoModal.informartUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg text-blue-700 dark:text-blue-300 font-bold transition-colors shadow-sm"
+                        >
+                          <span className="text-xl">🔗</span>
+                          リンクを開く
+                        </a>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700 text-center">リンクは登録されていません</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
