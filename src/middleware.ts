@@ -10,8 +10,8 @@ const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/lo
 const ROLE_ACCESS = {
   admin: ['/'], // admin は全パスアクセス可能とするので特殊扱い
   master: ['/admin/ingredients', '/admin/doughs', '/admin/products', '/production', '/reports', '/orders', '/order-breakdowns', '/settings'], 
-  manager: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/manager', '/api/admin/products'], 
-  chef: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/api/admin/products'], 
+  manager: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/manager', '/api/admin/products', '/api/admin/doughs'], 
+  chef: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/api/admin/products', '/api/admin/doughs'], 
 };
 
 export function middleware(request: NextRequest) {

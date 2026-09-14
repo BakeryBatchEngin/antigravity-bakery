@@ -19,6 +19,8 @@ interface Dough {
   base_dough_id?: string;
   base_dough_name?: string;
   base_dough_amount?: number;
+  memo?: string;
+  informart_url?: string;
   ingredients: DoughIngredient[];
 }
 
@@ -41,6 +43,8 @@ export default function DoughsMasterPage() {
     dough_id: '',
     dough_name: '',
     type: 'standard',
+    memo: '',
+    informart_url: '',
     ingredients: [],
   });
   
@@ -103,13 +107,22 @@ export default function DoughsMasterPage() {
         fetch('/api/admin/doughs'),
         fetch('/api/admin/ingredients')
       ]);
+      
+      if (!doughsRes.ok) {
+        throw new Error(`Doughs API Error: ${doughsRes.status} ${doughsRes.statusText}`);
+      }
+      if (!ingsRes.ok) {
+        throw new Error(`Ingredients API Error: ${ingsRes.status} ${ingsRes.statusText}`);
+      }
+      
       const doughsData = await doughsRes.json();
       const ingsData = await ingsRes.json();
       
-      if (doughsRes.ok) setDoughs(doughsData.doughs || []);
-      if (ingsRes.ok) setMasterIngredients(ingsData.ingredients || []);
-    } catch (e) {
+      setDoughs(doughsData.doughs || []);
+      setMasterIngredients(ingsData.ingredients || []);
+    } catch (e: any) {
       console.error(e);
+      setErrorMsg(e.message || 'データの取得に失敗しました');
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +137,7 @@ export default function DoughsMasterPage() {
   };
 
   const handleCancel = () => {
-    setFormData({ dough_id: '', dough_name: '', type: 'standard', base_dough_id: '', base_dough_name: '', base_dough_amount: 0, ingredients: [] });
+    setFormData({ dough_id: '', dough_name: '', type: 'standard', base_dough_id: '', base_dough_name: '', base_dough_amount: 0, memo: '', informart_url: '', ingredients: [] });
     setIsEditing(false);
     setErrorMsg('');
   };
@@ -347,6 +360,29 @@ export default function DoughsMasterPage() {
               </div>
             </div>
 
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-[2]">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">生地メモ・コメント</label>
+                <textarea 
+                  value={formData.memo || ''}
+                  onChange={e => setFormData({...formData, memo: e.target.value})}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                  placeholder="生地の作り方のコツや特記事項など"
+                  rows={2}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Informart URL</label>
+                <input 
+                  type="text" 
+                  value={formData.informart_url || ''}
+                  onChange={e => setFormData({...formData, informart_url: e.target.value})}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+
             {formData.type === 'sub_dough' && (
               <div className="border border-indigo-200 bg-indigo-50/30 rounded-lg p-4">
                 <h3 className="font-bold text-indigo-800 mb-3 border-b border-indigo-200 pb-2">ベース生地の設定</h3>
@@ -462,7 +498,7 @@ export default function DoughsMasterPage() {
                 <div key={dough.dough_id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-slate-50 group">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-sm font-mono bg-slate-200 text-slate-600 px-3 py-1 rounded">{dough.dough_id}</span>
                         {dough.type === 'sub_dough' && (
                           <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded border border-indigo-200">
@@ -470,9 +506,14 @@ export default function DoughsMasterPage() {
                           </span>
                         )}
                         {calculateDoughCostPerKg(dough) > 0 && (
-                          <span className="text-sm font-bold bg-amber-100 text-amber-800 px-3 py-1 rounded border border-amber-200 shadow-sm">
+                          <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded border border-amber-200 shadow-sm">
                             原価: ¥{Math.round(calculateDoughCostPerKg(dough))}/kg
                           </span>
+                        )}
+                        {dough.informart_url && (
+                          <a href={dough.informart_url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-2 py-1 rounded shadow-sm flex items-center gap-1 transition-colors" title="外部システムで開く">
+                            <span>🔗</span> Informart
+                          </a>
                         )}
                       </div>
                       <h3 className="font-bold text-lg text-slate-800 mt-1">{dough.dough_name}</h3>
@@ -482,6 +523,15 @@ export default function DoughsMasterPage() {
                       <button onClick={() => handleDelete(dough.dough_id)} className="p-1 hover:bg-red-100 text-red-600 rounded">🗑️</button>
                     </div>
                   </div>
+
+                  {dough.memo && (
+                    <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded p-3 text-sm text-yellow-800 shadow-sm">
+                      <div className="flex items-center gap-1 font-bold mb-1">
+                        <span>📝</span> メモ・コメント
+                      </div>
+                      <div className="whitespace-pre-wrap">{dough.memo}</div>
+                    </div>
+                  )}
                   <div className="bg-white rounded border border-slate-100 p-2">
                     <table className="w-full text-sm">
                       <tbody>
