@@ -23,10 +23,11 @@ export async function GET() {
     const tenantFilter = user.role === 'super_admin' ? '' : 'WHERE tenant_id = ?';
     const tenantParams = user.role === 'super_admin' ? [] : [user.tenant_id];
 
-    const [baseProducts, doughRows, ingRows] = await Promise.all([
-      db.all(`SELECT product_code, product_name, retail_price, wholesale_price FROM products ${tenantFilter} ORDER BY product_code ASC`, tenantParams),
+    const [baseProducts, doughRows, ingRows, aliasRows] = await Promise.all([
+      db.all(`SELECT product_code, product_name, retail_price, wholesale_price, memo, informart_url FROM products ${tenantFilter} ORDER BY product_code ASC`, tenantParams),
       db.all(`SELECT * FROM product_doughs ${tenantFilter} ORDER BY product_code ASC`, tenantParams),
       db.all(`SELECT * FROM product_ingredients ${tenantFilter} ORDER BY product_code ASC`, tenantParams),
+      db.all(`SELECT * FROM product_aliases ${tenantFilter} ORDER BY product_code ASC`, tenantParams),
     ]);
 
     const productsMap = new Map<string, any>();
@@ -36,8 +37,11 @@ export async function GET() {
         product_name: p.product_name,
         retail_price: p.retail_price || 0,
         wholesale_price: p.wholesale_price || 0,
+        memo: p.memo || '',
+        informart_url: p.informart_url || '',
         doughs: [],
-        ingredients: []
+        ingredients: [],
+        aliases: []
       });
     });
 
@@ -46,7 +50,7 @@ export async function GET() {
         productsMap.set(row.product_code, {
           product_code: row.product_code,
           product_name: row.product_name || row.product_code,
-          retail_price: 0, wholesale_price: 0, doughs: [], ingredients: []
+          retail_price: 0, wholesale_price: 0, memo: '', informart_url: '', doughs: [], ingredients: [], aliases: []
         });
       }
       productsMap.get(row.product_code).doughs.push({
@@ -59,12 +63,18 @@ export async function GET() {
         productsMap.set(row.product_code, {
           product_code: row.product_code,
           product_name: row.product_name || row.product_code,
-          retail_price: 0, wholesale_price: 0, doughs: [], ingredients: []
+          retail_price: 0, wholesale_price: 0, memo: '', informart_url: '', doughs: [], ingredients: [], aliases: []
         });
       }
       productsMap.get(row.product_code).ingredients.push({
         ingredient_code: row.ingredient_code, ingredient_name: row.ingredient_name, ingredient_amount: row.ingredient_amount
       });
+    });
+
+    aliasRows.forEach((row: any) => {
+      if (productsMap.has(row.product_code)) {
+        productsMap.get(row.product_code).aliases.push(row.alias_code);
+      }
     });
 
     const products = Array.from(productsMap.values()).sort((a, b) =>
@@ -83,7 +93,7 @@ export async function POST(request: Request) {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const { product_code, product_name, retail_price, wholesale_price, doughs, ingredients } = await request.json();
+    const { product_code, product_name, retail_price, wholesale_price, memo, informart_url, doughs, ingredients, aliases } = await request.json();
 
     if (!product_code || !product_name) {
       return NextResponse.json({ error: '商品コードと商品名は必須です' }, { status: 400 });
@@ -103,20 +113,24 @@ export async function POST(request: Request) {
     await db.run('BEGIN TRANSACTION');
     try {
       await db.run(`
-        INSERT INTO products (product_code, product_name, retail_price, wholesale_price, tenant_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO products (product_code, product_name, retail_price, wholesale_price, memo, informart_url, tenant_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(product_code, tenant_id) DO UPDATE SET
           product_name = excluded.product_name,
           retail_price = excluded.retail_price,
-          wholesale_price = excluded.wholesale_price
-      `, [product_code, product_name, retail_price || 0, wholesale_price || 0, tenantId]);
+          wholesale_price = excluded.wholesale_price,
+          memo = excluded.memo,
+          informart_url = excluded.informart_url
+      `, [product_code, product_name, retail_price || 0, wholesale_price || 0, memo || null, informart_url || null, tenantId]);
 
       if (tenantId) {
           await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
           await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          await db.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
         } else {
           await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
           await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+          await db.run('DELETE FROM product_aliases WHERE product_code = ?', [product_code]);
         }
 
       if (hasDough) {
@@ -144,6 +158,16 @@ export async function POST(request: Request) {
             INSERT INTO product_ingredients (product_code, product_name, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
             VALUES (?, ?, ?, ?, ?, ?)
           `, [product_code, product_name, ing.ingredient_code, nameToInsert, ing.ingredient_amount, tenantId]);
+        }
+      }
+
+      if (Array.isArray(aliases) && aliases.length > 0) {
+        for (const alias of aliases) {
+          if (!alias.trim()) continue;
+          await db.run(`
+            INSERT INTO product_aliases (alias_code, product_code, tenant_id)
+            VALUES (?, ?, ?)
+          `, [alias.trim(), product_code, tenantId]);
         }
       }
 
@@ -187,10 +211,12 @@ export async function DELETE(request: Request) {
     try {
       const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
         if (tenantId) {
+          await db.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
           await db.run('DELETE FROM products WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
           await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
           await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
         } else {
+          await db.run('DELETE FROM product_aliases WHERE product_code = ?', [code]);
           await db.run('DELETE FROM products WHERE product_code = ?', [code]);
           await db.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
           await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);

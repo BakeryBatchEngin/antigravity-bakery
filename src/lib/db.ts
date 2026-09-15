@@ -164,6 +164,20 @@ export async function initDb() {
       product_name TEXT NOT NULL,
       retail_price INTEGER DEFAULT 0,
       wholesale_price INTEGER DEFAULT 0,
+      memo TEXT,
+      informart_url TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  
+  // 開発環境等の既存DBに対するマイグレーション用（既に存在する場合はエラーになるためキャッチは別スクリプトでやるべきだが、SQLiteだとALTER TABLE IF NOT EXISTSが使えないのでPostgreSQL用なら本来はADD COLUMN IF NOT EXISTS）
+  // 稼働中のDBには直接SQLを実行してカラムを追加しておく想定。
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS product_aliases (
+      alias_code TEXT PRIMARY KEY,
+      product_code TEXT NOT NULL REFERENCES products(product_code) ON DELETE CASCADE,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -199,6 +213,9 @@ export async function initDb() {
       ingredient_code TEXT NOT NULL,
       ingredient_name TEXT,
       bakers_percent REAL,
+      memo TEXT,
+      informart_url TEXT,
+      tenant_id INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (dough_id, ingredient_code),
       FOREIGN KEY(ingredient_code) REFERENCES ingredients(ingredient_code)
@@ -212,6 +229,8 @@ export async function initDb() {
       base_dough_id TEXT NOT NULL,
       base_dough_name TEXT NOT NULL,
       base_dough_amount REAL NOT NULL,
+      memo TEXT,
+      informart_url TEXT,
       tenant_id INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

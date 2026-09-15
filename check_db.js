@@ -1,13 +1,21 @@
-﻿const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./bakery.db');
+﻿require('dotenv').config({ path: '.env.local' });
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-db.all(
-  SELECT t.id, t.tenant_name, COUNT(DISTINCT s.id) as store_count, COUNT(DISTINCT u.id) as user_count 
-  FROM tenants t 
-  LEFT JOIN stores s ON s.tenant_id = t.id 
-  LEFT JOIN users u ON u.tenant_id = t.id 
-  GROUP BY t.id
-, [], (err, rows) => {
-  if (err) throw err;
-  console.log(rows);
-});
+async function check() {
+  try {
+    const res = await pool.query("SELECT * FROM sub_doughs WHERE dough_id = 'D008'");
+    console.log("sub_doughs:");
+    console.log(res.rows);
+
+    const res2 = await pool.query("SELECT * FROM sub_dough_ingredients WHERE dough_id = 'D008'");
+    console.log("sub_dough_ingredients:");
+    console.log(res2.rows);
+
+  } catch (e) {
+    console.error(e);
+  } finally {
+    pool.end();
+  }
+}
+check();

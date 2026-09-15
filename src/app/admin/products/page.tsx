@@ -21,6 +21,9 @@ interface Product {
   product_name: string;
   retail_price: number;
   wholesale_price: number;
+  memo?: string;
+  informart_url?: string;
+  aliases?: string[];
   doughs: ProductDough[];
   ingredients: ProductIngredient[];
 }
@@ -55,6 +58,9 @@ export default function ProductsMasterPage() {
     product_name: '',
     retail_price: 0,
     wholesale_price: 0,
+    memo: '',
+    informart_url: '',
+    aliases: [],
     doughs: [],
     ingredients: [],
   });
@@ -130,9 +136,27 @@ export default function ProductsMasterPage() {
   };
 
   const handleCancel = () => {
-    setFormData({ product_code: '', product_name: '', retail_price: 0, wholesale_price: 0, doughs: [], ingredients: [] });
+    setFormData({ product_code: '', product_name: '', retail_price: 0, wholesale_price: 0, memo: '', informart_url: '', aliases: [], doughs: [], ingredients: [] });
     setIsEditing(false);
     setErrorMsg('');
+  };
+
+  // 別名コード操作
+  const addAliasRow = () => {
+    setFormData({
+      ...formData,
+      aliases: [...(formData.aliases || []), '']
+    });
+  };
+  const updateAliasRow = (index: number, value: string) => {
+    const newArr = [...(formData.aliases || [])];
+    newArr[index] = value;
+    setFormData({ ...formData, aliases: newArr });
+  };
+  const removeAliasRow = (index: number) => {
+    const newArr = [...(formData.aliases || [])];
+    newArr.splice(index, 1);
+    setFormData({ ...formData, aliases: newArr });
   };
 
   // 生地操作
@@ -383,6 +407,59 @@ export default function ProductsMasterPage() {
               </div>
             </div>
 
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">商品メモ・コメント</label>
+                <textarea 
+                  value={formData.memo || ''}
+                  onChange={e => setFormData({...formData, memo: e.target.value})}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                  placeholder="レシピへのリンクや特記事項などを自由に記述してください"
+                  rows={2}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Informart URL</label>
+                <input 
+                  type="text" 
+                  value={formData.informart_url || ''}
+                  onChange={e => setFormData({...formData, informart_url: e.target.value})}
+                  className="w-full px-4 py-3 text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                  placeholder="https://... (インフォマート等)"
+                />
+              </div>
+            </div>
+
+            <div className="border border-purple-200 bg-purple-50/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3 border-b border-purple-200 pb-2">
+                <div>
+                  <h3 className="font-bold text-purple-800">追加の商品コード（別名）</h3>
+                  <p className="text-xs text-purple-600 mt-1">スライス有無などで別コードとして発注される場合、ここに登録すると自動で統合されます。</p>
+                </div>
+                <button type="button" onClick={addAliasRow} className="px-3 py-1 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded text-sm font-bold transition-colors">
+                  ＋ コードを追加
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(!formData.aliases || formData.aliases.length === 0) && (
+                  <p className="text-slate-400 text-sm text-center py-2">別名コードはありません</p>
+                )}
+                {formData.aliases && formData.aliases.map((alias, idx) => (
+                  <div key={idx} className="flex gap-2 items-center bg-white p-2 border border-purple-100 rounded shadow-sm">
+                    <input 
+                      type="text"
+                      value={alias}
+                      onChange={(e) => updateAliasRow(idx, e.target.value)}
+                      className="w-full py-2 px-3 text-slate-900 border border-slate-300 rounded outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                      placeholder="例: PRD001-S"
+                      required
+                    />
+                    <button type="button" onClick={() => removeAliasRow(idx)} className="text-red-400 hover:text-red-600 p-2" title="削除">🗑️</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 使用生地リスト */}
               <div className="border border-blue-200 bg-blue-50/30 rounded-lg p-4">
@@ -521,17 +598,42 @@ export default function ProductsMasterPage() {
                     <button onClick={() => handleEdit(prod)} className="p-1 hover:bg-blue-100 text-blue-600 rounded bg-white border border-slate-200 shadow-sm">✏️</button>
                     <button onClick={() => handleDelete(prod.product_code)} className="p-1 hover:bg-red-100 text-red-600 rounded bg-white border border-slate-200 shadow-sm">🗑️</button>
                   </div>
-                  <div className="mb-4 pr-16">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono bg-amber-100 text-amber-800 px-3 py-1 rounded shadow-sm">{prod.product_code}</span>
-                      {calculateProductCost(prod) > 0 && (
-                        <span className="text-sm font-bold bg-slate-200 text-slate-700 px-3 py-1 rounded border border-slate-300 shadow-sm">
-                          原価: ¥{Math.round(calculateProductCost(prod))}/個
-                        </span>
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-sm font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded shadow-sm">{prod.product_code}</span>
+                        {calculateProductCost(prod) > 0 && (
+                          <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded border border-slate-300 shadow-sm">
+                            原価: ¥{Math.round(calculateProductCost(prod))}/個
+                          </span>
+                        )}
+                        {prod.informart_url && (
+                          <a href={prod.informart_url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-2 py-0.5 rounded shadow-sm flex items-center gap-1 transition-colors" title="外部システムで開く">
+                            <span>🔗</span> Informart
+                          </a>
+                        )}
+                      </div>
+                      <h3 className="font-black text-xl text-slate-800 mt-1">{prod.product_name}</h3>
+                      {prod.aliases && prod.aliases.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {prod.aliases.map((alias, i) => (
+                            <span key={i} className="text-[10px] font-mono bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded" title="別名コード">
+                              {alias}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <h3 className="font-black text-xl text-slate-800 mt-2">{prod.product_name}</h3>
                   </div>
+
+                  {prod.memo && (
+                    <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded p-3 text-sm text-yellow-800 shadow-sm">
+                      <div className="flex items-center gap-1 font-bold mb-1">
+                        <span>📝</span> メモ・コメント
+                      </div>
+                      <div className="whitespace-pre-wrap">{prod.memo}</div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2 mb-4 bg-white p-3 rounded border border-slate-200">
                     <div>

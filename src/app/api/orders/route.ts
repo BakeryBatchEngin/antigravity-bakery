@@ -149,9 +149,33 @@ export async function POST(request: Request) {
         const dateToSave = order.orderDate || uniqueDates[0];
         const storeName = order.customerName || '不明な店舗';
         const deliveryShift = order.deliveryShift !== undefined ? order.deliveryShift : '';
-        const productCode = order.productKey || '';
-        const productName = order.productName || '';
+        let productCode = order.productKey || '';
+        let productName = order.productName || '';
         const quantity = Number(order.quantity) || 0;
+
+        // 【エイリアス置換処理】
+        // インポートされた商品コードが「別名（エイリアス）コード」として登録されている場合、代表のコードと名前に自動置換する
+        const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
+        if (productCode && tenantId) {
+          const aliasRecord = await txDb.get(
+            'SELECT p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code = ? AND a.tenant_id = ?',
+            [productCode, tenantId]
+          );
+          if (aliasRecord) {
+            productCode = aliasRecord.product_code;
+            productName = aliasRecord.product_name;
+          }
+        } else if (productCode && !tenantId) {
+          // super_admin 用 (テナント指定なし)
+          const aliasRecord = await txDb.get(
+            'SELECT p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code = ?',
+            [productCode]
+          );
+          if (aliasRecord) {
+            productCode = aliasRecord.product_code;
+            productName = aliasRecord.product_name;
+          }
+        }
 
         // モード: append の場合は、すでに同じ店舗・便・商品のものがあるか確認し、あれば加算する
         if (mode === 'append') {

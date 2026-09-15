@@ -375,7 +375,14 @@ export default function ProductionPlanPage() {
       const res = await fetch(endpoint);
       
       if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+        const text = await res.text();
+        throw new Error(`API error: ${res.status} ${res.statusText} - ${text.substring(0, 100)}`);
+      }
+      
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Expected JSON, got ${contentType}. Body: ${text.substring(0, 100)}`);
       }
       
       const data = await res.json();
