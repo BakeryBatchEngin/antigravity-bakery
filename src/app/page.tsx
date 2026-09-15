@@ -126,6 +126,16 @@ export default function Home() {
               <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Mixer Settings</h3>
               <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">自店のミキサー容量上限の設定</p>
             </Link>
+
+            {/* 予定使用料予測 */}
+            <Link 
+              href="/forecast" 
+              className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-amber-500 transition-all group"
+            >
+              <span className="text-5xl mb-4 group-hover:scale-110 transition-transform">📅</span>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Usage Forecast</h3>
+              <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">複数日の原材料使用量予測</p>
+            </Link>
           </div>
         </>
       )}
