@@ -277,6 +277,7 @@ export default function ProductionPlanPage() {
   // UI状態管理
   const [mixers, setMixers] = useState<MixerCapacity[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [isMobileDetailView, setIsMobileDetailView] = useState<boolean>(false);
   const [flatBatches, setFlatBatches] = useState<FlatBatch[]>([]);
   const [flatProductBatches, setFlatProductBatches] = useState<FlatProductBatch[]>([]);
   const [isPlanSet, setIsPlanSet] = useState<boolean>(false);
@@ -1514,7 +1515,7 @@ export default function ProductionPlanPage() {
         {!isLoading && flatBatches.length > 0 && (
           <>
             {/* 左ペイン：バッチリスト */}
-            <div className="w-full sm:w-1/3 md:w-80 lg:w-96 flex-none bg-slate-200/50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 overflow-y-auto p-4 space-y-4 shadow-inner">
+            <div className={`w-full sm:w-1/3 md:w-80 lg:w-96 flex-none bg-slate-200/50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 overflow-y-auto p-4 space-y-4 shadow-inner ${isMobileDetailView ? 'hidden sm:block' : 'block'}`}>
               {flatBatches.map(batch => {
                 const isSelected = selectedBatchId === batch.id;
                 const currentFlourWeight = batch.currentFlourWeightGrams;
@@ -1542,17 +1543,17 @@ export default function ProductionPlanPage() {
                 return (
                   <div 
                     key={batch.id} 
-                    onClick={() => setSelectedBatchId(batch.id)}
+                    onClick={() => { setSelectedBatchId(batch.id); setIsMobileDetailView(true); }}
                     className={`
                       cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
                       ${isExecuted 
                         ? (isSelected 
-                           ? 'border-emerald-500 bg-slate-100 dark:bg-slate-700 shadow-md scale-[1.01]' 
-                           : 'border-l-emerald-500 border-y border-r border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20') 
+                           ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40 shadow-md scale-[1.01]' 
+                           : 'border-y border-r border-slate-300 border-l-slate-400 bg-slate-100 dark:bg-slate-800 dark:border-slate-700') 
                         : 'border-l-amber-500'}
                       ${!isExecuted && isAllChecked ? 'opacity-40 grayscale' : ''}
                       ${!isExecuted && isSelected
-                        ? 'bg-slate-200 dark:bg-slate-700 shadow-lg scale-[1.01] border-y border-r border-amber-500' 
+                        ? 'bg-amber-50 dark:bg-amber-900/30 shadow-lg scale-[1.01] border-y border-r border-amber-500' 
                         : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-y border-r border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm' : ''}
                     `}
                   >
@@ -1719,17 +1720,17 @@ export default function ProductionPlanPage() {
                     return (
                       <div 
                         key={batch.id} 
-                        onClick={() => setSelectedBatchId(batch.id)}
+                        onClick={() => { setSelectedBatchId(batch.id); setIsMobileDetailView(true); }}
                         className={`
                           cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
                           ${isExecuted 
                             ? (isSelected 
-                               ? 'border-emerald-500 bg-slate-100 dark:bg-slate-700 shadow-md scale-[1.01]' 
-                               : 'border-l-emerald-500 border-y border-r border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20') 
+                               ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40 shadow-md scale-[1.01]' 
+                               : 'border-y border-r border-slate-300 border-l-slate-400 bg-slate-100 dark:bg-slate-800 dark:border-slate-700') 
                             : 'border-l-emerald-500'}
                           ${!isExecuted && isAllChecked ? 'opacity-40 grayscale' : ''}
                           ${!isExecuted && isSelected
-                            ? 'bg-slate-200 dark:bg-slate-700 shadow-lg scale-[1.01] border-y border-r border-emerald-500' 
+                            ? 'bg-emerald-50 dark:bg-emerald-900/30 shadow-lg scale-[1.01] border-y border-r border-emerald-500' 
                             : !isExecuted ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-y border-r border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm' : ''}
                         `}
                       >
@@ -1919,9 +1920,17 @@ export default function ProductionPlanPage() {
             )}
 
             {/* 右ペイン：詳細表示 (黄色の枠線のデザイン) */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center items-start">
+            <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center items-start ${!isMobileDetailView ? 'hidden sm:flex' : 'flex'}`}>
               {selectedBatchDetail ? (
-                <div className="w-full max-w-3xl bg-white rounded-lg outline outline-4 outline-amber-400 outline-offset-0 overflow-hidden shadow-2xl">
+                <div className="w-full max-w-3xl flex flex-col gap-2">
+                  <button
+                    onClick={() => setIsMobileDetailView(false)}
+                    className="sm:hidden self-start px-4 py-3 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-lg shadow-sm flex items-center gap-2 mb-2 w-full justify-center active:scale-95 transition-transform"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+                    一覧に戻る
+                  </button>
+                  <div className="w-full bg-white rounded-lg outline outline-4 outline-amber-400 outline-offset-0 overflow-hidden shadow-2xl">
                   
                   {/* 詳細ヘッダー */}
                   <div className="px-6 py-5 flex items-center justify-between gap-4 bg-white">
@@ -2135,7 +2144,7 @@ export default function ProductionPlanPage() {
                       </tbody>
                     </table>
                   </div>
-
+                  </div>
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center w-full text-slate-400 font-bold text-2xl">
