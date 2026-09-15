@@ -387,7 +387,7 @@ export default function ProductionPlanPage() {
       
       const data = await res.json();
       
-      let targetItem = null;
+      let targetItem: any = null;
       let recipeItems: { name: string, amount: string, unit: string }[] = [];
 
       if (type === 'product' && data.products) {
