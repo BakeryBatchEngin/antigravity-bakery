@@ -69,10 +69,13 @@ export default function NavigationHeader() {
     }
   };
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const headerBgClass = isProduction ? "bg-slate-200 dark:bg-slate-800" : "bg-white dark:bg-slate-900";
+
   // ログイン画面ではヘッダーのツールバーをシンプルに
   if (pathname === '/login') {
     return (
-      <header className="bg-white text-slate-800 shadow-sm border-b border-slate-200 relative overflow-hidden">
+      <header className={`${headerBgClass} text-slate-800 shadow-sm border-b border-slate-200 relative overflow-hidden`}>
         <div className="container mx-auto px-4 py-3 flex items-center justify-center relative z-10">
           <img src="/logo-pat.png" alt="Bakery Batch Engine" className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg" />
         </div>
@@ -90,7 +93,7 @@ export default function NavigationHeader() {
     : [];
 
   return (
-    <header className="bg-white text-slate-800 shadow-sm border-b border-slate-200 relative overflow-hidden">
+    <header className={`${headerBgClass} text-slate-800 shadow-sm border-b border-slate-200 relative overflow-hidden`}>
       <div className="container mx-auto px-4 py-3 flex items-center justify-between relative z-10">
         <Link href="/" className="hover:opacity-80 transition-opacity flex items-end gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
