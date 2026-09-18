@@ -300,8 +300,8 @@ export default function DoughsMasterPage() {
       )}
 
       {/* 登録・編集フォーム */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-10">
-        <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-10">
+        <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 rounded-t-xl">
           <h2 className="text-lg font-bold text-slate-700">
             {isEditing ? '生地の編集' : '新規生地の登録'}
           </h2>
