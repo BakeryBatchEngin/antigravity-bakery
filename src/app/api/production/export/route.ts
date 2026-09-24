@@ -206,7 +206,7 @@ export async function GET(request: Request) {
           const ing = batch.baseIngredients[idx];
           const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / 100);
           
-          const reqW = Math.round(requiredWeight * 10) / 10;
+          const reqW = Math.round(requiredWeight * 100) / 100;
           
           // 該当バッチ・材料の計量完了時刻があれば取得
           const doneTime = doneTimeMap[batch.id]?.[ing.ingredientCode] || '';
@@ -265,7 +265,7 @@ export async function GET(request: Request) {
       const safeOriginalQty = batch.originalBatchQuantity || 1;
       const originalTotalDough = batch.originalTotalDoughWeightGrams || 0;
       const doughPerItem = originalTotalDough / safeOriginalQty;
-      const currentDoughWeight = Math.round(doughPerItem * currentQty * 10) / 10;
+      const currentDoughWeight = Math.round(doughPerItem * currentQty * 100) / 100;
 
       const mixingTimeStr = mixingExecutionTimeMap[batch.id] || '';
 
@@ -321,7 +321,7 @@ export async function GET(request: Request) {
       if (batch.baseIngredients && Array.isArray(batch.baseIngredients) && batch.baseIngredients.length > 0) {
         for (const ing of batch.baseIngredients) {
           const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
-          const reqWeight = Math.round(perItemWeight * currentQty * 10) / 10;
+          const reqWeight = Math.round(perItemWeight * currentQty * 100) / 100;
           
           // 該当バッチ・材料の計量完了時刻があれば取得
           const doneTime = doneTimeMap[batch.id]?.[ing.ingredientCode] || '';

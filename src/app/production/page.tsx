@@ -931,7 +931,7 @@ export default function ProductionPlanPage() {
         const ingredients = unCheckedIngredients.map(ing => ({
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 10) / 10
+          requiredWeightGrams: Math.round(batch.currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent) * 100) / 100
         }));
         exportBatches.push({ batchId: batch.id, ingredients });
       } else if (batch.baseIngredients.length === 0 && !checkedIngredients[batch.id]?.['__NO_INGREDIENTS__']) {
@@ -958,7 +958,7 @@ export default function ProductionPlanPage() {
         const ingredients = unCheckedIngredients.map(ing => ({
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 10) / 10
+          requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * batch.currentBatchQuantity * 100) / 100
         }));
         exportBatches.push({ batchId: batch.id, ingredients });
       } else if (batch.baseIngredients.length === 0 && !checkedIngredients[batch.id]?.['__NO_INGREDIENTS__']) {
@@ -1030,14 +1030,14 @@ export default function ProductionPlanPage() {
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty * 10) / 10
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty * 100) / 100
       }));
     } else {
       const b = batch as FlatBatch;
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
-        requiredWeightGrams: Math.round(currTotalFlour * (ing.bakersPercent / 100) * 10) / 10
+        requiredWeightGrams: Math.round(currTotalFlour * (ing.bakersPercent / 100) * 100) / 100
       }));
     }
 
@@ -1127,7 +1127,7 @@ export default function ProductionPlanPage() {
         return {
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(perItemWeight * currentQty * 10) / 10
+          requiredWeightGrams: Math.round(perItemWeight * currentQty * 100) / 100
         };
       });
     } else {
@@ -1137,7 +1137,7 @@ export default function ProductionPlanPage() {
         return {
           ingredientCode: ing.ingredientCode,
           ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(requiredWeight * 10) / 10
+          requiredWeightGrams: Math.round(requiredWeight * 100) / 100
         };
       });
     }
@@ -1321,12 +1321,12 @@ export default function ProductionPlanPage() {
         const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
         return {
           ...ing,
-          requiredWeightGrams: Math.round(perItemWeight * currentQty * 10) / 10
+          requiredWeightGrams: Math.round(perItemWeight * currentQty * 100) / 100
         };
       });
 
       const perItemDoughWeight = batchInfo.originalTotalDoughWeightGrams / safeOriginalQty;
-      const currentTotalDoughWeightGrams = Math.round(perItemDoughWeight * currentQty * 10) / 10;
+      const currentTotalDoughWeightGrams = Math.round(perItemDoughWeight * currentQty * 100) / 100;
 
       return {
         ...batchInfo,
@@ -1348,7 +1348,7 @@ export default function ProductionPlanPage() {
         const requiredWeight = currentFlourWeightGrams * (ing.bakersPercent / flourBakersPercent);
         return {
           ...ing,
-          requiredWeightGrams: Math.round(requiredWeight * 10) / 10
+          requiredWeightGrams: Math.round(requiredWeight * 100) / 100
         };
       });
 
@@ -2114,7 +2114,7 @@ export default function ProductionPlanPage() {
                               </td>
                               {selectedBatchDetail.type === 'dough' && (
                                 <td className="py-5 px-6 text-center text-slate-500 font-bold text-lg">
-                                  {typeof bakersPercent === 'number' ? (Math.round(bakersPercent * 10) / 10) : bakersPercent}%
+                                  {typeof bakersPercent === 'number' ? (Math.round(bakersPercent * 100) / 100) : bakersPercent}%
                                 </td>
                               )}
                               <td className="py-5 px-6 text-right">

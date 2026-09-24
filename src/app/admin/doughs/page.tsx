@@ -404,8 +404,8 @@ export default function DoughsMasterPage() {
                   <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-indigo-500 bg-white">
                     <input 
                       type="number"
-                      step="1"
-                      min="1"
+                      step="0.01"
+                      min="0.01"
                       value={formData.base_dough_amount || ''}
                       onChange={(e) => setFormData({...formData, base_dough_amount: Number(e.target.value)})}
                       className="w-full py-2 text-slate-900 outline-none text-right placeholder-slate-400"
@@ -437,7 +437,7 @@ export default function DoughsMasterPage() {
                     <div className="flex-1 w-full sm:w-auto flex items-center gap-1 border border-slate-300 rounded px-2 focus-within:ring-2 focus-within:ring-amber-500 bg-white">
                       <input 
                         type="number"
-                        step={formData.type === 'standard' ? "0.1" : "1"}
+                        step="0.01"
                         min="0"
                         value={formData.type === 'standard' ? (ing.bakers_percent || '') : (ing.ingredient_amount || '')}
                         onChange={(e) => updateIngredientRow(idx, formData.type === 'standard' ? 'bakers_percent' : 'ingredient_amount', Number(e.target.value))}
@@ -555,8 +555,8 @@ export default function DoughsMasterPage() {
                           <td className="pt-1">合計</td>
                           <td className="pt-1 text-right">
                             {dough.type === 'standard' 
-                              ? `${Math.round(dough.ingredients.reduce((sum, i) => sum + (i.bakers_percent||0), 0) * 10) / 10}%`
-                              : `${Math.round(((dough.base_dough_amount||0) + dough.ingredients.reduce((sum, i) => sum + (i.ingredient_amount||0), 0)) * 10) / 10}g`
+                              ? `${Math.round(dough.ingredients.reduce((sum, i) => sum + (i.bakers_percent||0), 0) * 100) / 100}%`
+                              : `${Math.round(((dough.base_dough_amount||0) + dough.ingredients.reduce((sum, i) => sum + (i.ingredient_amount||0), 0)) * 100) / 100}g`
                             }
                           </td>
                         </tr>

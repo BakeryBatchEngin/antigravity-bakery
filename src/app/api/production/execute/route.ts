@@ -42,7 +42,7 @@ export async function POST(request: Request) {
                 await txDb.run(`
                     INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
                     VALUES (?, ?, ?, ?, ?, ?)
-                `, [storeId, date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 10) / 10]);
+                `, [storeId, date, batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 100) / 100]);
             }
         }
       }

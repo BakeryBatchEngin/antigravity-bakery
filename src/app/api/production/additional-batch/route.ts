@@ -81,7 +81,7 @@ export async function POST(request: Request) {
               ingredientCode: ing.ingredient_code,
               ingredientName: ing.ingredient_name,
               bakersPercent: (ing.ingredient_amount / subDough.base_dough_amount) * 100,
-              requiredWeightGrams: Math.round(ing.ingredient_amount * multiplier * 10) / 10
+              requiredWeightGrams: Math.round(ing.ingredient_amount * multiplier * 100) / 100
             };
           });
 
@@ -94,9 +94,9 @@ export async function POST(request: Request) {
             baseDoughName: subDough.base_dough_name,
             totalBakersPercent: totalBakersPercent,
             batchNumber: i + 1,
-            originalFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
-            originalTotalWeightGrams: Math.round(batchWeight * 10) / 10,
-            currentFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
+            originalFlourWeightGrams: Math.round(batchFlourWeight * 100) / 100,
+            originalTotalWeightGrams: Math.round(batchWeight * 100) / 100,
+            currentFlourWeightGrams: Math.round(batchFlourWeight * 100) / 100,
             baseIngredients: ingredients,
             isAdditional: true,
             isRemake: reason === 'remake'
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
                 ingredientCode: ing.ingredient_code,
                 ingredientName: ing.ingredient_name,
                 bakersPercent: ing.bakers_percent,
-                requiredWeightGrams: Math.round(requiredWeight * 10) / 10
+                requiredWeightGrams: Math.round(requiredWeight * 100) / 100
               };
             });
 
@@ -145,9 +145,9 @@ export async function POST(request: Request) {
               doughName: baseLatestName,
               totalBakersPercent: baseTotalBakersPercent,
               batchNumber: i + 1,
-              originalFlourWeightGrams: Math.round(baseBatchFlourWeight * 10) / 10,
-              originalTotalWeightGrams: Math.round(baseBatchWeight * 10) / 10,
-              currentFlourWeightGrams: Math.round(baseBatchFlourWeight * 10) / 10,
+              originalFlourWeightGrams: Math.round(baseBatchFlourWeight * 100) / 100,
+              originalTotalWeightGrams: Math.round(baseBatchWeight * 100) / 100,
+              currentFlourWeightGrams: Math.round(baseBatchFlourWeight * 100) / 100,
               baseIngredients: baseIngredients,
               isAdditional: true,
               isRemake: reason === 'remake'
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
               ingredientCode: ing.ingredient_code,
               ingredientName: ing.ingredient_name,
               bakersPercent: ing.bakers_percent,
-              requiredWeightGrams: Math.round(requiredWeight * 10) / 10
+              requiredWeightGrams: Math.round(requiredWeight * 100) / 100
             };
           });
 
@@ -199,9 +199,9 @@ export async function POST(request: Request) {
             doughName: latestDoughName,
             totalBakersPercent: totalBakersPercent,
             batchNumber: i + 1,
-            originalFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
-            originalTotalWeightGrams: Math.round(batchWeight * 10) / 10,
-            currentFlourWeightGrams: Math.round(batchFlourWeight * 10) / 10,
+            originalFlourWeightGrams: Math.round(batchFlourWeight * 100) / 100,
+            originalTotalWeightGrams: Math.round(batchWeight * 100) / 100,
+            currentFlourWeightGrams: Math.round(batchFlourWeight * 100) / 100,
             baseIngredients: ingredients,
             isAdditional: true,
             isRemake: reason === 'remake'
@@ -242,7 +242,7 @@ export async function POST(request: Request) {
         const batchIngredients = productIngredients.map((ing: any) => ({
           ingredientCode: ing.ingredient_code,
           ingredientName: ing.ingredient_name,
-          requiredWeightGrams: Math.round(ing.ingredient_amount * batchQty * 10) / 10
+          requiredWeightGrams: Math.round(ing.ingredient_amount * batchQty * 100) / 100
         }));
 
         generatedProductBatches.push({
@@ -254,7 +254,7 @@ export async function POST(request: Request) {
           doughName: combinedDoughName,
           batchNumber: i + 1,
           originalBatchQuantity: batchQty,
-          originalTotalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty * 10) / 10,
+          originalTotalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty * 100) / 100,
           currentBatchQuantity: batchQty,
           maxBatchQuantity: maxBatchesQty,
           doughDetails: doughDetails,
