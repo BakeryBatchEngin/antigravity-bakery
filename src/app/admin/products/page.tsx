@@ -1,5 +1,6 @@
 'use client';
 import SearchableSelect from '@/components/SearchableSelect';
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 import { useState, useEffect, useRef } from 'react';
 
@@ -588,7 +589,7 @@ export default function ProductsMasterPage() {
         <div className="overflow-x-auto p-4 sm:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {isLoading ? (
-              <p className="text-slate-400 text-center col-span-full py-10">Loading...</p>
+              <div className="col-span-full"><LoadingSpinner /></div>
             ) : filteredProducts.length === 0 ? (
               <p className="text-slate-400 text-center col-span-full py-10">該当する商品がありません</p>
             ) : (

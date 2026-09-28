@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import LoadingSpinner from "@/components/LoadingSpinner";
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -51,7 +52,7 @@ export default function LoginPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 p-4">
         <div className="w-full max-w-md text-center">
           <h1 className="text-3xl font-extrabold text-white tracking-tight mb-8">Bakery Batch Engine</h1>
-          <div className="text-slate-500 font-medium">Loading...</div>
+          <div className="scale-75"><LoadingSpinner /></div>
         </div>
       </div>
     );
@@ -137,7 +138,7 @@ export default function LoginPage() {
         {/* バージョン表示 */}
         <div className="text-center mt-10">
           <p className="text-slate-500 text-sm font-medium">
-            Ver. 3.17
+            Ver. 3.18
           </p>
         </div>
 

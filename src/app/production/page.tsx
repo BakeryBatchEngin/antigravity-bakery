@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from 'next/link';
 
 // APIが返すデータの型定義
@@ -1485,10 +1486,7 @@ export default function ProductionPlanPage() {
         
         {/* ローディング・エラー・データなし時の表示 */}
         {isLoading && (
-          <div className="flex w-full justify-center items-center">
-            <div className="animate-spin text-6xl">🔄</div>
-            <span className="text-2xl ml-4 font-bold text-slate-600 dark:text-slate-300">計算中...</span>
-          </div>
+          <LoadingSpinner text="計算中..." />
         )}
         
         {errorMsg && !isLoading && (
@@ -1877,10 +1875,7 @@ export default function ProductionPlanPage() {
                   {/* モーダルボディ */}
                   <div className="p-6">
                     {breakdownModal.isLoading ? (
-                      <div className="flex items-center justify-center py-8 gap-3">
-                        <div className="animate-spin text-3xl">🔄</div>
-                        <span className="text-slate-500 font-bold">読み込み中...</span>
-                      </div>
+                      <LoadingSpinner text="読み込み中..." />
                     ) : breakdownModal.items.length === 0 ? (
                       <div className="text-center py-8">
                         <div className="text-4xl mb-3">💭</div>
@@ -2323,10 +2318,7 @@ export default function ProductionPlanPage() {
               {/* モーダルボディ */}
               <div className="p-6 overflow-y-auto">
                 {infoModal.isLoading ? (
-                  <div className="flex items-center justify-center py-8 gap-3">
-                    <div className="animate-spin text-3xl">🔄</div>
-                    <span className="text-slate-500 font-bold">読み込み中...</span>
-                  </div>
+                  <LoadingSpinner text="読み込み中..." />
                 ) : (
                   <div className="space-y-6">
                     {/* レシピ一覧表示 */}

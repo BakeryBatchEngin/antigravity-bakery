@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ManagerDashboardPage from "./manager/dashboard/page";
@@ -41,7 +42,7 @@ export default function Home() {
   }, [router]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading...</div>;
+    return <LoadingSpinner fullScreen={true} />;
   }
 
   if (!user) return null;

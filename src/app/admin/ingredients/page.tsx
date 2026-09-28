@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Ingredient {
   ingredient_code: string;
@@ -333,7 +334,7 @@ export default function IngredientsMasterPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={5} className="text-center py-10 text-slate-400">Loading...</td></tr>
+                <tr><td colSpan={5}><LoadingSpinner /></td></tr>
               ) : filteredIngredients.length === 0 ? (
                 <tr><td colSpan={5} className="text-center py-10 text-slate-400">該当する材料がありません</td></tr>
               ) : (
