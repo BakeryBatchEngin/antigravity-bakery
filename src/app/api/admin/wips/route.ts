@@ -144,7 +144,7 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error('Failed to save wip:', error);
-    return NextResponse.json({ error: 'データの保存に失敗しました' }, { status: 500 });
+    return NextResponse.json({ error: 'データの保存に失敗しました: ' + (error.message || String(error)) }, { status: 500 });
   }
 }
 
