@@ -13,7 +13,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     }
     
-    // 認証チェックを緩和（一時的なマイグレーション用。ログイン済みなら許可）
     let user;
     try {
       user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
@@ -23,32 +22,41 @@ export async function GET(request: Request) {
 
     const db = await getDb();
     
-    // wipsテーブルの作成
+    // 間違ったスキーマで作成されたテーブルを削除
+    await db.exec(`
+      DROP TABLE IF EXISTS wip_ingredients CASCADE;
+      DROP TABLE IF EXISTS wips CASCADE;
+    `);
+
+    // 正しいスキーマで wips を作成
     await db.exec(`
       CREATE TABLE IF NOT EXISTS wips (
-        id SERIAL PRIMARY KEY,
-        wip_code TEXT UNIQUE NOT NULL,
+        wip_code TEXT NOT NULL,
         wip_name TEXT NOT NULL,
-        tenant_id INTEGER REFERENCES tenants(id),
+        memo TEXT,
+        informart_url TEXT,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        PRIMARY KEY (wip_code, tenant_id)
       );
     `);
 
-    // wip_ingredientsテーブルの作成
+    // 正しいスキーマで wip_ingredients を作成
     await db.exec(`
       CREATE TABLE IF NOT EXISTS wip_ingredients (
-        id SERIAL PRIMARY KEY,
-        wip_code TEXT REFERENCES wips(wip_code) ON DELETE CASCADE,
+        wip_code TEXT NOT NULL,
         ingredient_code TEXT NOT NULL,
-        ingredient_name TEXT NOT NULL,
+        ingredient_name TEXT,
         ingredient_amount REAL NOT NULL,
-        tenant_id INTEGER REFERENCES tenants(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (wip_code, ingredient_code, tenant_id),
+        FOREIGN KEY (wip_code, tenant_id) REFERENCES wips(wip_code, tenant_id) ON DELETE CASCADE,
+        FOREIGN KEY (ingredient_code, tenant_id) REFERENCES ingredients(ingredient_code, tenant_id) ON DELETE CASCADE
       );
     `);
 
-    return NextResponse.json({ success: true, message: 'WIP migration completed successfully (role=' + user.role + ')' });
+    return NextResponse.json({ success: true, message: 'WIP schema fixed and created successfully' });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
