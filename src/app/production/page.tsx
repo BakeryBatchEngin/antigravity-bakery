@@ -69,6 +69,8 @@ interface ProductionResponse {
   productMixingPlan?: ProductMixingPlanItem[];
   savedFlatBatches?: FlatBatch[];
   savedFlatProductBatches?: FlatProductBatch[];
+  wipMixingPlan?: WipMixingPlanItem[];
+  savedFlatWipBatches?: FlatWipBatch[];
   executedBatchIds?: string[];
   mixingExecutionTimes?: Record<string, string>;
   isSet?: boolean;
@@ -95,8 +97,40 @@ interface FlatBatch {
   isRemake?: boolean;
 }
 
+export interface WipMixingPlanItem {
+  wipCode: string;
+  wipName: string;
+  totalRequiredGrams: number;
+  batches: {
+    batchNumber: number;
+    batchTotalWeightGrams: number;
+    ingredients: {
+      ingredientCode: string;
+      ingredientName: string;
+      requiredWeightGrams: number;
+    }[];
+  }[];
+}
+
+export interface FlatWipBatch {
+  id: string;
+  type: 'wip';
+  wipCode: string;
+  wipName: string;
+  batchNumber: number;
+  originalTotalWeightGrams: number;
+  currentTotalWeightGrams: number;
+  baseIngredients: {
+    ingredientCode: string;
+    ingredientName: string;
+    requiredWeightGrams: number;
+  }[];
+  selectedMixerId?: string;
+  isAdditional?: boolean;
+}
+
 interface FlatProductBatch {
-  id: string; // 例: PM-MH001-1
+  id: string;
   type: 'product';
   productCode: string;
   productName: string;
@@ -281,6 +315,7 @@ export default function ProductionPlanPage() {
   const [isMobileDetailView, setIsMobileDetailView] = useState<boolean>(false);
   const [flatBatches, setFlatBatches] = useState<FlatBatch[]>([]);
   const [flatProductBatches, setFlatProductBatches] = useState<FlatProductBatch[]>([]);
+  const [flatWipBatches, setFlatWipBatches] = useState<FlatWipBatch[]>([]);
   const [isPlanSet, setIsPlanSet] = useState<boolean>(false);
   const [executedBatchIds, setExecutedBatchIds] = useState<string[]>([]);
   const [mixingExecutionTimes, setMixingExecutionTimes] = useState<Record<string, string>>({});
@@ -602,6 +637,28 @@ export default function ProductionPlanPage() {
           return a.batchNumber - b.batchNumber;
         });
         setFlatBatches(initialDoughBatches);
+
+        const initialWipBatches: FlatWipBatch[] = [];
+        if (data.wipMixingPlan && data.wipMixingPlan.length > 0) {
+          data.wipMixingPlan.forEach(plan => {
+            plan.batches.forEach(batch => {
+              const id = `${plan.wipCode}-${batch.batchNumber}`;
+              if (!firstBatchId) firstBatchId = id;
+              initialWipBatches.push({
+                id,
+                type: 'wip',
+                wipCode: plan.wipCode,
+                wipName: plan.wipName,
+                batchNumber: batch.batchNumber,
+                originalTotalWeightGrams: batch.batchTotalWeightGrams,
+                baseIngredients: batch.ingredients,
+                currentTotalWeightGrams: batch.batchTotalWeightGrams,
+                selectedMixerId: data.mixers?.[0]?.id
+              });
+            });
+          });
+        }
+        setFlatWipBatches(initialWipBatches);
 
         const initialProductBatches: FlatProductBatch[] = [];
         if (data.productMixingPlan && data.productMixingPlan.length > 0) {
@@ -1009,32 +1066,42 @@ export default function ProductionPlanPage() {
   };
 
   const toggleAllChecks = async (batchId: string, isCurrentlyAllChecked: boolean) => {
-    let batch: FlatBatch | FlatProductBatch | undefined = flatBatches.find(b => b.id === batchId);
-    let isProduct = false;
-    let currentQty = 1;
-    let currTotalFlour = 0;
+    let batch: FlatBatch | FlatProductBatch | FlatWipBatch | undefined = flatBatches.find(b => b.id === batchId);
+    let batchType: 'dough' | 'product' | 'wip' = 'dough';
     
     if (!batch) {
       batch = flatProductBatches.find(b => b.id === batchId);
-      isProduct = true;
-      currentQty = (batch as FlatProductBatch)?.currentBatchQuantity || 1;
-    } else {
-      currTotalFlour = (batch as FlatBatch)?.currentFlourWeightGrams || 0;
+      if (batch) batchType = 'product';
+    }
+    if (!batch) {
+      batch = flatWipBatches.find(b => b.id === batchId);
+      if (batch) batchType = 'wip';
     }
     
     if (!batch) return;
 
     let calculatedIngredients = [];
-    if (isProduct) {
+    if (batchType === 'product') {
       const b = batch as FlatProductBatch;
       const safeOriginalQty = b.originalBatchQuantity || 1;
+      const currentQty = b.currentBatchQuantity || 1;
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
         requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty * 100) / 100
       }));
+    } else if (batchType === 'wip') {
+      const b = batch as FlatWipBatch;
+      const safeOriginalQty = b.originalTotalWeightGrams || 1;
+      const ratio = b.currentTotalWeightGrams / safeOriginalQty;
+      calculatedIngredients = b.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams * ratio) * 100) / 100
+      }));
     } else {
       const b = batch as FlatBatch;
+      const currTotalFlour = b.currentFlourWeightGrams || 0;
       calculatedIngredients = b.baseIngredients.map(ing => ({
         ingredientCode: ing.ingredientCode,
         ingredientName: ing.ingredientName,
@@ -1103,44 +1170,48 @@ export default function ProductionPlanPage() {
     }));
 
     // 変更後の全材料チェック判定を行う
-    let batch: FlatBatch | FlatProductBatch | undefined = flatBatches.find(b => b.id === batchId);
-    let isProduct = false;
-    let currentQty = 1;
-    let currTotalFlour = 0;
+    let batch: FlatBatch | FlatProductBatch | FlatWipBatch | undefined = flatBatches.find(b => b.id === batchId);
+    let batchType: 'dough' | 'product' | 'wip' = 'dough';
     
     if (!batch) {
       batch = flatProductBatches.find(b => b.id === batchId);
-      isProduct = true;
-      currentQty = (batch as FlatProductBatch)?.currentBatchQuantity || 1;
-    } else {
-      currTotalFlour = (batch as FlatBatch)?.currentFlourWeightGrams || 0;
+      if (batch) batchType = 'product';
+    }
+    if (!batch) {
+      batch = flatWipBatches.find(b => b.id === batchId);
+      if (batch) batchType = 'wip';
     }
     
     if (!batch) return;
 
     // 現在の計算された材料リストを生成 (UI上のグラム数と同じ量)
     let calculatedIngredients = [];
-    if (isProduct) {
+    if (batchType === 'product') {
       const b = batch as FlatProductBatch;
       const safeOriginalQty = b.originalBatchQuantity || 1;
-      calculatedIngredients = b.baseIngredients.map(ing => {
-        const perItemWeight = ing.requiredWeightGrams / safeOriginalQty;
-        return {
-          ingredientCode: ing.ingredientCode,
-          ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(perItemWeight * currentQty * 100) / 100
-        };
-      });
+      const currentQty = b.currentBatchQuantity || 1;
+      calculatedIngredients = b.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalQty) * currentQty * 100) / 100
+      }));
+    } else if (batchType === 'wip') {
+      const b = batch as FlatWipBatch;
+      const safeOriginalQty = b.originalTotalWeightGrams || 1;
+      const ratio = b.currentTotalWeightGrams / safeOriginalQty;
+      calculatedIngredients = b.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round((ing.requiredWeightGrams * ratio) * 100) / 100
+      }));
     } else {
       const b = batch as FlatBatch;
-      calculatedIngredients = b.baseIngredients.map(ing => {
-        const requiredWeight = currTotalFlour * (ing.bakersPercent / 100);
-        return {
-          ingredientCode: ing.ingredientCode,
-          ingredientName: ing.ingredientName,
-          requiredWeightGrams: Math.round(requiredWeight * 100) / 100
-        };
-      });
+      const currTotalFlour = b.currentFlourWeightGrams || 0;
+      calculatedIngredients = b.baseIngredients.map(ing => ({
+        ingredientCode: ing.ingredientCode,
+        ingredientName: ing.ingredientName,
+        requiredWeightGrams: Math.round(currTotalFlour * (ing.bakersPercent / 100) * 100) / 100
+      }));
     }
 
     const allCheckedNow = calculatedIngredients.length > 0 && calculatedIngredients.every(ing => newBatchChecks[ing.ingredientCode]);
@@ -1302,6 +1373,51 @@ export default function ProductionPlanPage() {
         return updatedBatches;
       });
     }
+
+    // 仕掛品 (WIP) の総量も連動して増減させる
+    if (targetBatch.baseIngredients && targetBatch.baseIngredients.length > 0) {
+      const wipIngredients = targetBatch.baseIngredients.filter(ing => 
+        flatWipBatches.some(w => w.wipCode === ing.ingredientCode)
+      );
+
+      if (wipIngredients.length > 0) {
+        setFlatWipBatches(prevWipBatches => {
+          let updatedWips = [...prevWipBatches];
+          
+          wipIngredients.forEach(ing => {
+            const safeOriginalQty = targetBatch.originalBatchQuantity || 1;
+            const amountPerItem = ing.requiredWeightGrams / safeOriginalQty;
+            const deltaGrams = amountPerItem * deltaQty;
+            
+            const wipBatches = updatedWips.filter(b => b.wipCode === ing.ingredientCode).sort((a,b) => a.batchNumber - b.batchNumber);
+            if (wipBatches.length === 0) return;
+            
+            const lastBatchId = wipBatches[wipBatches.length - 1].id;
+            const lastBatchIdx = updatedWips.findIndex(b => b.id === lastBatchId);
+            if (lastBatchIdx !== -1) {
+              updatedWips[lastBatchIdx] = {
+                ...updatedWips[lastBatchIdx],
+                currentTotalWeightGrams: Math.max(0, updatedWips[lastBatchIdx].currentTotalWeightGrams + deltaGrams)
+              };
+            }
+            
+            // この仕掛品の再正規化
+            const otherWipBatches = updatedWips.filter(b => b.wipCode !== ing.ingredientCode);
+            const targetWipBatches = updatedWips.filter(b => b.wipCode === ing.ingredientCode).sort((a,b) => a.batchNumber - b.batchNumber);
+            const normalizedWipBatches = normalizeWipBatches(targetWipBatches, mixers);
+            updatedWips = [...otherWipBatches, ...normalizedWipBatches];
+          });
+          
+          updatedWips.sort((a, b) => {
+            const wipCmp = a.wipCode.localeCompare(b.wipCode, 'en');
+            if (wipCmp !== 0) return wipCmp;
+            return a.batchNumber - b.batchNumber;
+          });
+          
+          return updatedWips;
+        });
+      }
+    }
   };
 
   // 現在選択されているバッチの詳細データを構築
@@ -1309,6 +1425,27 @@ export default function ProductionPlanPage() {
     if (!selectedBatchId) return null;
     
     const isProduct = selectedBatchId.startsWith('PM-') || selectedBatchId.startsWith('ADD-P-');
+    
+    const wipBatchInfo = flatWipBatches.find(b => b.id === selectedBatchId);
+    if (wipBatchInfo) {
+      const safeOriginalQty = wipBatchInfo.originalTotalWeightGrams || 1;
+      const ratio = wipBatchInfo.currentTotalWeightGrams / safeOriginalQty;
+
+      const recalculatedIngredients = wipBatchInfo.baseIngredients.map(ing => {
+        return {
+          ...ing,
+          requiredWeightGrams: Math.round(ing.requiredWeightGrams * ratio * 100) / 100
+        };
+      });
+
+      return {
+        ...wipBatchInfo,
+        type: 'wip' as const,
+        productCode: wipBatchInfo.wipCode,
+        productName: wipBatchInfo.wipName,
+        ingredients: recalculatedIngredients
+      };
+    }
 
     if (isProduct) {
       const batchInfo = flatProductBatches.find(b => b.id === selectedBatchId);
@@ -1690,11 +1827,80 @@ export default function ProductionPlanPage() {
                 );
               })}
 
-              {/* === 副材料仕込み（Product Mixing）のリスト === */}
+              {/* === 仕掛品仕込み（WIP Mixing）のリスト === */}
+              {flatWipBatches.length > 0 && (
+                <div className="mt-8 mb-2 border-t-2 border-slate-300 dark:border-slate-600 pt-6">
+                  <h3 className="text-xl font-bold flex items-center gap-2 mb-4 text-amber-700 dark:text-amber-500">
+                    <span className="text-2xl">🍯</span> 仕掛品仕込み
+                  </h3>
+                  <div className="space-y-4">
+                  {flatWipBatches.map(batch => {
+                    const isSelected = selectedBatchId === batch.id;
+                    const isExecuted = executedBatchIds.includes(batch.id);
+                    
+                    const batchChecks = checkedIngredients[batch.id] || {};
+                    const isAllChecked = batch.baseIngredients.length > 0 && batch.baseIngredients.every(ing => batchChecks[ing.ingredientCode]);
+
+                    return (
+                      <div 
+                        key={batch.id} 
+                        onClick={() => { setSelectedBatchId(batch.id); setIsMobileDetailView(true); }}
+                        className={`
+                          cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
+                          ${isExecuted 
+                            ? (isSelected 
+                               ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40 shadow-md scale-[1.01]' 
+                               : 'border-y border-r border-slate-300 border-l-slate-400 bg-slate-100 dark:bg-slate-800 dark:border-slate-700') 
+                            : 'border-l-emerald-500'}
+                          ${isSelected && !isExecuted ? 'bg-amber-50 dark:bg-amber-900/40 border-y border-r border-amber-300 dark:border-amber-700 shadow-md scale-[1.01]' : (!isExecuted ? 'border-y border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-amber-300 hover:shadow-sm' : '')}
+                        `}
+                      >
+                        {isExecuted && (
+                          <div className="absolute inset-0 bg-white/40 dark:bg-slate-900/40 pointer-events-none z-10" />
+                        )}
+                        <div className="flex justify-between items-start mb-1 relative z-20">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded font-mono font-bold">{batch.wipCode}</span>
+                            <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{batch.wipName}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 relative z-20 mt-1">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 font-bold text-sm shadow-inner shrink-0">
+                            {batch.batchNumber}
+                          </div>
+                          <div className="text-xs text-amber-600 dark:text-amber-400 font-bold whitespace-nowrap shrink-0">
+                            回目
+                          </div>
+                          <div className="flex items-center justify-center gap-1 shrink-0">
+                            <span className="text-xl">🍯</span>
+                            <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center">
+                              {isExecuted && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />}
+                              {!isExecuted && isAllChecked && <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />}
+                            </div>
+                          </div>
+                          
+                          <div className="flex-1 flex justify-end">
+                            <div className="text-right">
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">仕掛品重量</div>
+                              <div className="flex items-baseline justify-end gap-1">
+                                <span className="font-black text-amber-600 dark:text-amber-400 text-lg">{(batch.currentTotalWeightGrams / 1000).toFixed(2)}</span>
+                                <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">kg</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                </div>
+              )}
+
+              {/* === オーダー商品（Product Mixing）のリスト === */}
               {flatProductBatches.length > 0 && (
                 <div className="mt-8 mb-2 border-t-2 border-slate-300 dark:border-slate-600 pt-6">
                   <h3 className="text-xl font-bold flex items-center gap-2 mb-4 text-amber-700 dark:text-amber-500">
-                    <span className="text-2xl">🥐</span> 副材料仕込み
+                    <span className="text-2xl">🥐</span> オーダー商品
                   </h3>
                   <div className="space-y-4">
                   {flatProductBatches.map(batch => {
@@ -1931,10 +2137,10 @@ export default function ProductionPlanPage() {
                   <div className="px-6 py-5 flex items-center justify-between gap-4 bg-white">
                     <div className="flex items-center gap-4">
                       <div className="bg-amber-100 text-amber-900 font-black text-xl px-4 py-2 rounded-lg border border-amber-300">
-                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode : selectedBatchDetail.doughCode}
+                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productCode : (selectedBatchDetail.type === 'wip' ? selectedBatchDetail.wipCode : selectedBatchDetail.doughCode)}
                       </div>
                       <h3 className="text-3xl font-black text-slate-900 tracking-wide">
-                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName : selectedBatchDetail.doughName}
+                        {selectedBatchDetail.type === 'product' ? selectedBatchDetail.productName : (selectedBatchDetail.type === 'wip' ? selectedBatchDetail.wipName : selectedBatchDetail.doughName)}
                       </h3>
                     </div>
                     {/* 商品バッチ または 生地バッチ の場合はマスタ情報ボタンを表示 */}
@@ -1978,6 +2184,15 @@ export default function ProductionPlanPage() {
                           <div className="text-slate-300 font-light text-2xl">/</div>
                           <div className="text-center">
                             <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">総生地量目安</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : selectedBatchDetail.type === 'wip' ? (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">仕掛品総重量</div>
                             <div className="text-3xl font-black text-amber-500">
                               {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
                             </div>
@@ -2383,4 +2598,49 @@ export default function ProductionPlanPage() {
 
     </div>
   );
-}
+}const normalizeWipBatches = (batches: FlatWipBatch[], mixers: MixerCapacity[]): FlatWipBatch[] => {
+  if (batches.length === 0) return [];
+  let current = [...batches];
+  const baseBatch = current[0];
+  
+  while (current.length > 0) {
+    const lastIdx = current.length - 1;
+    if (current[lastIdx].currentTotalWeightGrams <= 0) {
+      const excess = current[lastIdx].currentTotalWeightGrams;
+      current.pop();
+      if (excess < 0 && current.length > 0) {
+        current[current.length - 1].currentTotalWeightGrams += excess;
+      }
+    } else {
+      break;
+    }
+  }
+  
+  for (let i = 0; i < current.length; i++) {
+    const mixerId = current[i].selectedMixerId;
+    const mixer = mixers.find(m => m.id === mixerId) || mixers[0];
+    const maxCapacityKg = Math.max(1, mixer ? mixer.max_capacity_kg : 50);
+    const maxWeightGrams = maxCapacityKg * 1000;
+
+    if (current[i].currentTotalWeightGrams > maxWeightGrams + 0.1) {
+      const excess = current[i].currentTotalWeightGrams - maxWeightGrams;
+      current[i].currentTotalWeightGrams = maxWeightGrams;
+      if (i + 1 < current.length) {
+        current[i + 1].currentTotalWeightGrams += excess;
+      } else {
+        const nextBatchNum = current[i].batchNumber + 1;
+        current.push({
+          ...baseBatch,
+          id: `WIP-${baseBatch.wipCode}-${nextBatchNum}`,
+          batchNumber: nextBatchNum,
+          originalTotalWeightGrams: 0,
+          currentTotalWeightGrams: excess,
+          selectedMixerId: current[i].selectedMixerId
+        });
+      }
+    }
+  }
+  return current;
+};
+
+  

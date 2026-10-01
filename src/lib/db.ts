@@ -199,10 +199,44 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS ingredients (
       ingredient_code TEXT PRIMARY KEY,
       ingredient_name TEXT NOT NULL,
+      type TEXT DEFAULT 'material',
       purchase_weight INTEGER,
       purchase_price INTEGER,
       status TEXT DEFAULT 'active',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 既存のingredientsテーブルにtypeカラムを追加（既に存在する場合はエラーになるため無視）
+  try {
+    await database.exec(`ALTER TABLE ingredients ADD COLUMN type TEXT DEFAULT 'material';`);
+  } catch (e) {
+    // column might already exist
+  }
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS wips (
+      wip_code TEXT NOT NULL,
+      wip_name TEXT NOT NULL,
+      memo TEXT,
+      informart_url TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (wip_code, tenant_id)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS wip_ingredients (
+      wip_code TEXT NOT NULL,
+      ingredient_code TEXT NOT NULL,
+      ingredient_name TEXT,
+      ingredient_amount REAL NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (wip_code, ingredient_code, tenant_id),
+      FOREIGN KEY (wip_code, tenant_id) REFERENCES wips(wip_code, tenant_id) ON DELETE CASCADE,
+      FOREIGN KEY (ingredient_code, tenant_id) REFERENCES ingredients(ingredient_code, tenant_id) ON DELETE CASCADE
     );
   `);
 

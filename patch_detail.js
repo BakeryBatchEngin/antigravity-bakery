@@ -1,0 +1,127 @@
+const fs = require('fs');
+
+const path = 'src/app/production/page.tsx';
+let content = fs.readFileSync(path, 'utf8');
+
+const targetStr1 = `  const selectedBatchDetail = useMemo(() => {
+    if (!selectedBatchId) return null;
+    
+    const isProduct = selectedBatchId.startsWith('PM-') || selectedBatchId.startsWith('ADD-P-');
+
+    if (isProduct) {`;
+
+const repStr1 = `  const selectedBatchDetail = useMemo(() => {
+    if (!selectedBatchId) return null;
+    
+    const isProduct = selectedBatchId.startsWith('PM-') || selectedBatchId.startsWith('ADD-P-');
+    
+    // WIP判定
+    const wipBatchInfo = flatWipBatches.find(b => b.id === selectedBatchId);
+    if (wipBatchInfo) {
+      const safeOriginalQty = wipBatchInfo.originalTotalWeightGrams || 1;
+      const ratio = wipBatchInfo.currentTotalWeightGrams / safeOriginalQty;
+
+      const recalculatedIngredients = wipBatchInfo.baseIngredients.map(ing => {
+        return {
+          ...ing,
+          requiredWeightGrams: Math.round(ing.requiredWeightGrams * ratio * 100) / 100
+        };
+      });
+
+      return {
+        ...wipBatchInfo,
+        type: 'wip' as const,
+        productCode: wipBatchInfo.wipCode,
+        productName: wipBatchInfo.wipName,
+        ingredients: recalculatedIngredients
+      };
+    }
+
+    if (isProduct) {`;
+
+const targetStr2 = `                    <div className="flex gap-8 items-center bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
+                      {selectedBatchDetail.type === 'dough' ? (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{selectedBatchDetail?.isSubDough ? 'ベース生地量' : '粉量'}</div>
+                            <div className="text-2xl font-black text-slate-700">
+                              {fmtG(selectedBatchDetail.currentFlourWeightGrams)} <span className="text-xl text-slate-400">g</span>
+                            </div>
+                          </div>
+                          <div className="text-slate-300 font-light text-2xl">/</div>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">総生地量目安</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">バッチ個数</div>
+                            <div className="text-2xl font-black text-slate-700">
+                              {selectedBatchDetail.currentQty} <span className="text-xl text-slate-400">個</span>
+                            </div>
+                          </div>
+                          <div className="text-slate-300 font-light text-2xl">/</div>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">使用生地量目安</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalDoughWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      )}`;
+
+const repStr2 = `                    <div className="flex gap-8 items-center bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
+                      {selectedBatchDetail.type === 'dough' ? (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{selectedBatchDetail?.isSubDough ? 'ベース生地量' : '粉量'}</div>
+                            <div className="text-2xl font-black text-slate-700">
+                              {fmtG(selectedBatchDetail.currentFlourWeightGrams)} <span className="text-xl text-slate-400">g</span>
+                            </div>
+                          </div>
+                          <div className="text-slate-300 font-light text-2xl">/</div>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">総生地量目安</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : selectedBatchDetail.type === 'wip' ? (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">仕掛品総重量</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">バッチ個数</div>
+                            <div className="text-2xl font-black text-slate-700">
+                              {selectedBatchDetail.currentQty} <span className="text-xl text-slate-400">個</span>
+                            </div>
+                          </div>
+                          <div className="text-slate-300 font-light text-2xl">/</div>
+                          <div className="text-center">
+                            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">使用生地量目安</div>
+                            <div className="text-3xl font-black text-amber-500">
+                              {fmtG(selectedBatchDetail.currentTotalDoughWeightGrams)} <span className="text-2xl text-amber-500/80">g</span>
+                            </div>
+                          </div>
+                        </>
+                      )}`;
+
+if (content.includes(targetStr1)) content = content.replace(targetStr1, repStr1);
+else console.log("target1 not found");
+if (content.includes(targetStr2)) content = content.replace(targetStr2, repStr2);
+else console.log("target2 not found");
+
+fs.writeFileSync(path, content, 'utf8');
+console.log('Done');

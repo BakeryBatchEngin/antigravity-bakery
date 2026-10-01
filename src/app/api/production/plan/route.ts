@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const { date, flatBatches, flatProductBatches } = await request.json();
+    const { date, flatBatches, flatWipBatches, flatProductBatches } = await request.json();
     if (!date || !flatBatches) {
       return NextResponse.json({ error: 'データが不足しています' }, { status: 400 });
     }
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (!storeId) {
       return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
     }
-    const planData = JSON.stringify({ flatBatches, flatProductBatches });
+    const planData = JSON.stringify({ flatBatches, flatWipBatches, flatProductBatches });
 
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       await txDb.run(`
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
 
       const validBatchIds = [
         ...(flatBatches || []).map((b: any) => b.id),
+        ...(flatWipBatches || []).map((b: any) => b.id),
         ...(flatProductBatches || []).map((b: any) => b.id)
       ];
 
