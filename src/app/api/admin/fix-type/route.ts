@@ -21,16 +21,16 @@ export async function GET(request: Request) {
     }
 
     if (columns.includes('type')) {
-      return NextResponse.json({ success: true, message: 'Column "type" already exists', columns });
+      return NextResponse.json({ success: true, message: 'Column type already exists', columns });
     }
 
     // 2. カラムを追加する
     try {
-      await db.run(`ALTER TABLE ingredients ADD COLUMN type TEXT DEFAULT 'material'`);
+      await db.run("ALTER TABLE ingredients ADD COLUMN type TEXT DEFAULT 'material'");
       columns.push('type');
-      return NextResponse.json({ success: true, message: 'Added column "type"', columns });
+      return NextResponse.json({ success: true, message: 'Added column type', columns });
     } catch (e: any) {
-      return NextResponse.json({ error: 'Failed to add column: ' + e.message, sql: \`ALTER TABLE ingredients ADD COLUMN type TEXT DEFAULT 'material'\` }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to add column: ' + e.message }, { status: 500 });
     }
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
