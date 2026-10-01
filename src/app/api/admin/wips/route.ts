@@ -54,7 +54,7 @@ export async function GET() {
     const wips = Array.from(wipsMap.values());
     
     return NextResponse.json({ success: true, wips });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch wips:', error);
     return NextResponse.json({ error: 'データの取得に失敗しました' }, { status: 500 });
   }
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       await db.run('ROLLBACK');
       throw txError;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to save wip:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました: ' + (error.message || String(error)) }, { status: 500 });
   }
@@ -188,7 +188,7 @@ export async function DELETE(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to delete wip:', error);
     return NextResponse.json({ error: 'データの削除に失敗しました' }, { status: 500 });
   }
