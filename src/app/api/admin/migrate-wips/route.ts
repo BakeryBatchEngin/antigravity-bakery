@@ -12,23 +12,26 @@ export async function GET(request: Request) {
     if (!sessionCookie || !sessionCookie.value) {
       return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     }
-    
-    let user;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch (e) {
-      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
-    }
 
     const db = await getDb();
+    const messages = [];
     
-    // 間違ったスキーマで作成されたテーブルを削除
+    // 1. ingredients テーブルに type カラムを追加（失敗しても無視）
+    try {
+      await db.exec(`ALTER TABLE ingredients ADD COLUMN type TEXT DEFAULT 'material';`);
+      messages.push('Added type column to ingredients');
+    } catch (e: any) {
+      messages.push('Type column might already exist: ' + e.message);
+    }
+
+    // 2. 間違ったスキーマで作成されたテーブルを削除
     await db.exec(`
       DROP TABLE IF EXISTS wip_ingredients CASCADE;
       DROP TABLE IF EXISTS wips CASCADE;
     `);
+    messages.push('Dropped old wips tables');
 
-    // 正しいスキーマで wips を作成
+    // 3. 正しいスキーマで wips を作成
     await db.exec(`
       CREATE TABLE IF NOT EXISTS wips (
         wip_code TEXT NOT NULL,
@@ -40,8 +43,9 @@ export async function GET(request: Request) {
         PRIMARY KEY (wip_code, tenant_id)
       );
     `);
+    messages.push('Created wips table');
 
-    // 正しいスキーマで wip_ingredients を作成
+    // 4. 正しいスキーマで wip_ingredients を作成
     await db.exec(`
       CREATE TABLE IF NOT EXISTS wip_ingredients (
         wip_code TEXT NOT NULL,
@@ -55,8 +59,9 @@ export async function GET(request: Request) {
         FOREIGN KEY (ingredient_code, tenant_id) REFERENCES ingredients(ingredient_code, tenant_id) ON DELETE CASCADE
       );
     `);
+    messages.push('Created wip_ingredients table');
 
-    return NextResponse.json({ success: true, message: 'WIP schema fixed and created successfully' });
+    return NextResponse.json({ success: true, messages });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
