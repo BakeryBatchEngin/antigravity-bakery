@@ -1,22 +1,21 @@
 const fs = require('fs');
-const path = 'src/app/production/page.tsx';
-let c = fs.readFileSync(path, 'utf8');
 
-const targetStr = `        body: JSON.stringify({
+const pageTsxPath = 'src/app/production/page.tsx';
+let c = fs.readFileSync(pageTsxPath, 'utf8');
+
+c = c.replace(
+  `        body: JSON.stringify({
           date: targetDate,
           flatBatches: flatBatches,
           flatProductBatches: flatProductBatches
-        })
-      });`;
-
-const replaceStr = `        body: JSON.stringify({
+        })`,
+  `        body: JSON.stringify({
           date: targetDate,
           flatBatches: flatBatches,
           flatWipBatches: flatWipBatches,
           flatProductBatches: flatProductBatches
-        })
-      });`;
+        })`
+);
 
-c = c.replace(targetStr, replaceStr);
-fs.writeFileSync(path, c);
-console.log('Patched handleSetPlan to include flatWipBatches');
+fs.writeFileSync(pageTsxPath, c);
+console.log('Successfully patched handleSetPlan for flatWipBatches');
