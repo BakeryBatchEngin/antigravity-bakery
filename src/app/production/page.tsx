@@ -505,6 +505,7 @@ export default function ProductionPlanPage() {
     try {
       let updatedDoughs = [...flatBatches];
       let updatedProducts = [...flatProductBatches];
+      let updatedWips = [...flatWipBatches];
       
       for (const item of validItems) {
         const res = await fetch('/api/production/additional-batch', {
@@ -517,6 +518,7 @@ export default function ProductionPlanPage() {
         if (res.ok && data.success) {
           updatedDoughs = [...updatedDoughs, ...(data.additionalDoughBatches || [])];
           updatedProducts = [...updatedProducts, ...(data.additionalProductBatches || [])];
+          updatedWips = [...updatedWips, ...(data.additionalWipBatches || [])];
         } else {
           alert(`エラー: ${data.error || '追加バッチの生成に失敗しました'}`);
         }
@@ -524,6 +526,7 @@ export default function ProductionPlanPage() {
       
       setFlatBatches(updatedDoughs);
       setFlatProductBatches(updatedProducts);
+      setFlatWipBatches(updatedWips);
       setAddModal(prev => ({ ...prev, isOpen: false, isLoading: false }));
       
       if (isPlanSet) {
@@ -533,6 +536,7 @@ export default function ProductionPlanPage() {
           body: JSON.stringify({
             date: targetDate,
             flatBatches: updatedDoughs,
+            flatWipBatches: updatedWips,
             flatProductBatches: updatedProducts
           })
         });
@@ -998,6 +1002,33 @@ export default function ProductionPlanPage() {
 
       newExecutedIds.push(batch.id);
       
+      const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
+      if (batch.baseIngredients.length > 0) {
+        batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
+      } else {
+        checks['__NO_INGREDIENTS__'] = true;
+      }
+      newCheckedState[batch.id] = checks;
+    });
+
+    // 仕掛品バッチの計算
+    flatWipBatches.forEach(batch => {
+      const safeOriginalWeight = batch.originalTotalWeightGrams || 1;
+      const unCheckedIngredients = batch.baseIngredients.filter(ing => !checkedIngredients[batch.id]?.[ing.ingredientCode]);
+
+      if (unCheckedIngredients.length > 0) {
+        const ingredients = unCheckedIngredients.map(ing => ({
+          ingredientCode: ing.ingredientCode,
+          ingredientName: ing.ingredientName,
+          requiredWeightGrams: Math.round((ing.requiredWeightGrams / safeOriginalWeight) * batch.currentTotalWeightGrams * 100) / 100
+        }));
+        exportBatches.push({ batchId: batch.id, ingredients });
+      } else if (batch.baseIngredients.length === 0 && !checkedIngredients[batch.id]?.['__NO_INGREDIENTS__']) {
+        exportBatches.push({ batchId: batch.id, ingredients: [] });
+      }
+
+      newExecutedIds.push(batch.id);
+
       const checks: Record<string, boolean> = { ...(newCheckedState[batch.id] || {}) };
       if (batch.baseIngredients.length > 0) {
         batch.baseIngredients.forEach(ing => { checks[ing.ingredientCode] = true; });
