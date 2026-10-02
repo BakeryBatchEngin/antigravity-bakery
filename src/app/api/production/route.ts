@@ -97,6 +97,7 @@ export async function GET(request: Request) {
     // ==========================================
     const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ? AND store_id = ?`, [date, storeId]);
     let savedFlatBatches = null;
+    let savedFlatWipBatches = null;
     let savedFlatProductBatches = null;
     let isPlanSet = false;
 
@@ -104,6 +105,7 @@ export async function GET(request: Request) {
       try {
         const parsed = JSON.parse(savedPlanRow.plan_data);
         savedFlatBatches = parsed.flatBatches || [];
+        savedFlatWipBatches = parsed.flatWipBatches || [];
         savedFlatProductBatches = parsed.flatProductBatches || [];
         isPlanSet = true;
       } catch (e) {
@@ -504,6 +506,7 @@ export async function GET(request: Request) {
       productMixingPlan: isPlanSet ? [] : productMixingPlan,
       wipMixingPlan: isPlanSet ? [] : wipMixingPlan,
       savedFlatBatches: savedFlatBatches,
+      savedFlatWipBatches: savedFlatWipBatches,
       savedFlatProductBatches: savedFlatProductBatches,
       executedBatchIds: executedBatchIds,
       mixingExecutionTimes: mixingExecutionTimes

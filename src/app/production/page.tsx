@@ -586,7 +586,16 @@ export default function ProductionPlanPage() {
           });
           setFlatProductBatches(sortedSavedProducts);
           
-          let firstBatchId = data.savedFlatBatches[0]?.id || sortedSavedProducts[0]?.id || null;
+          const sortedSavedWips = data.savedFlatWipBatches || [];
+          sortedSavedWips.sort((a: any, b: any) => {
+            if (a.isAdditional !== b.isAdditional) return a.isAdditional ? 1 : -1;
+            const wipCmp = a.wipCode.localeCompare(b.wipCode, 'en');
+            if (wipCmp !== 0) return wipCmp;
+            return a.batchNumber - b.batchNumber;
+          });
+          setFlatWipBatches(sortedSavedWips);
+          
+          let firstBatchId = data.savedFlatBatches[0]?.id || sortedSavedProducts[0]?.id || sortedSavedWips[0]?.id || null;
           setSelectedBatchId(firstBatchId);
 
           // 実行済みのバッチについては、UI上の全チェックボックスをONにしておく
@@ -600,7 +609,13 @@ export default function ProductionPlanPage() {
           data.savedFlatProductBatches?.forEach(b => {
              if (execIds.includes(b.id)) {
                initialChecks[b.id] = {};
-               b.baseIngredients.forEach(i => initialChecks[b.id][i.ingredientCode] = true);
+               b.baseIngredients.forEach((i: any) => initialChecks[b.id][i.ingredientCode] = true);
+             }
+          });
+          data.savedFlatWipBatches?.forEach((b: any) => {
+             if (execIds.includes(b.id)) {
+               initialChecks[b.id] = {};
+               b.baseIngredients.forEach((i: any) => initialChecks[b.id][i.ingredientCode] = true);
              }
           });
           setCheckedIngredients(initialChecks);
