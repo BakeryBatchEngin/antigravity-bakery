@@ -1936,11 +1936,17 @@ export default function ProductionPlanPage() {
                                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40 shadow-md scale-[1.01]' 
                                : 'border-y border-r border-slate-300 border-l-slate-400 bg-slate-100 dark:bg-slate-800 dark:border-slate-700') 
                             : 'border-l-emerald-500'}
+                          ${!isExecuted && isAllChecked ? 'opacity-40 grayscale' : ''}
                           ${isSelected && !isExecuted ? 'bg-amber-50 dark:bg-amber-900/40 border-y border-r border-amber-300 dark:border-amber-700 shadow-md scale-[1.01]' : (!isExecuted ? 'border-y border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-amber-300 hover:shadow-sm' : '')}
                         `}
                       >
                         {isExecuted && (
-                          <div className="absolute inset-0 bg-white/40 dark:bg-slate-900/40 pointer-events-none z-10" />
+                          <>
+                            <div className="absolute inset-0 bg-white/40 dark:bg-slate-900/40 pointer-events-none z-10" />
+                            <div className="absolute top-0 right-0 bg-white text-slate-900 border border-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-bl-lg shadow-sm z-20 dark:bg-slate-800 dark:text-white dark:border-slate-600">
+                              計量済
+                            </div>
+                          </>
                         )}
                         <div className="flex justify-between items-start mb-1 relative z-20">
                           <div className="flex items-center gap-2">
