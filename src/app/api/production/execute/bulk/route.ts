@@ -21,36 +21,55 @@ export async function POST(request: Request) {
     const db = await getDb();
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
+      console.time('bulk_execute_check');
+      const batchIds = batches.map((b: any) => b.batchId);
+      if (batchIds.length === 0) return;
+
+      const placeholders = batchIds.map(() => '?').join(',');
+      const existingRows = await txDb.all(
+        `SELECT batch_id, ingredient_code FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id IN (${placeholders})`,
+        [storeId, date, ...batchIds]
+      );
+      
+      const existingSet = new Set<string>();
+      existingRows.forEach((row: any) => {
+        existingSet.add(`${row.batch_id}_${row.ingredient_code}`);
+      });
+      console.timeEnd('bulk_execute_check');
+
+      console.time('bulk_execute_insert');
+      const toInsert: any[] = [];
       for (const batch of batches) {
         if (!batch.ingredients || batch.ingredients.length === 0) {
-            const existing = await txDb.get(
-              'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
-              [storeId, date, batch.batchId, '__NO_INGREDIENTS__']
-            );
-            if (!existing) {
-                await txDb.run(`
-                    INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `, [storeId, date, batch.batchId, '__NO_INGREDIENTS__', '副材料なし（実行済）', 0]);
-            }
+          const key = `${batch.batchId}___NO_INGREDIENTS__`;
+          if (!existingSet.has(key)) {
+            toInsert.push([storeId, date, batch.batchId, '__NO_INGREDIENTS__', '副材料なし（実行済）', 0]);
+          }
         } else {
-            for (const ing of batch.ingredients) {
-                // 既に登録されているか確認し、登録されていなければ INSERT する
-                const existing = await txDb.get(
-                  'SELECT 1 FROM ingredient_usages WHERE store_id = ? AND target_date = ? AND batch_id = ? AND ingredient_code = ?',
-                  [storeId, date, batch.batchId, ing.ingredientCode]
-                );
-                
-                if (!existing) {
-                    await txDb.run(`
-                        INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `, [storeId, date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 100) / 100]);
-                }
+          for (const ing of batch.ingredients) {
+            const key = `${batch.batchId}_${ing.ingredientCode}`;
+            if (!existingSet.has(key)) {
+              toInsert.push([storeId, date, batch.batchId, ing.ingredientCode, ing.ingredientName, Math.round(ing.requiredWeightGrams * 100) / 100]);
             }
+          }
         }
       }
+
+      if (toInsert.length > 0) {
+        const chunkSize = 200; 
+        for (let i = 0; i < toInsert.length; i += chunkSize) {
+          const chunk = toInsert.slice(i, i + chunkSize);
+          const valuePlaceholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+          const flatValues = chunk.flat();
+          await txDb.run(`
+            INSERT INTO ingredient_usages (store_id, target_date, batch_id, ingredient_code, ingredient_name, used_weight_grams)
+            VALUES ${valuePlaceholders}
+          `, flatValues);
+        }
+      }
+      console.timeEnd('bulk_execute_insert');
     });
+    
     return NextResponse.json({ success: true });
   } catch(error) {
     console.error('Error executing bulk batch:', error);

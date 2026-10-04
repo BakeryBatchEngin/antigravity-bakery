@@ -125,6 +125,96 @@ export async function GET(request: Request) {
     });
 
     // ==========================================
+    // マスターデータの事前一括取得 (N+1問題解消のため)
+    // ==========================================
+    console.time('fetch_master_data');
+    const productCodes = orderedProducts.map((p: any) => p.product_code);
+    
+    // 変数の準備
+    const productDoughsMap: Record<string, any[]> = {};
+    const productIngredientsMap: Record<string, any[]> = {};
+    const subDoughMap: Record<string, any> = {};
+    const subDoughIngredientsMap: Record<string, any[]> = {};
+    const doughIngredientsMap: Record<string, any[]> = {};
+    const masterDoughNameMap: Record<string, string> = {};
+
+    if (productCodes.length > 0) {
+      const placeholders = productCodes.map(() => '?').join(',');
+      
+      // 1. product_doughs
+      const allProductDoughs = await db.all(`
+        SELECT product_code, dough_code, dough_name, dough_amount
+        FROM product_doughs
+        WHERE tenant_id = ? AND product_code IN (${placeholders})
+      `, [user.tenant_id, ...productCodes]);
+      
+      allProductDoughs.forEach((row: any) => {
+        if (!productDoughsMap[row.product_code]) productDoughsMap[row.product_code] = [];
+        productDoughsMap[row.product_code].push(row);
+      });
+
+      // 2. product_ingredients
+      const allProductIngredients = await db.all(`
+        SELECT product_code, ingredient_code, ingredient_name, ingredient_amount
+        FROM product_ingredients
+        WHERE tenant_id = ? AND product_code IN (${placeholders})
+      `, [user.tenant_id, ...productCodes]);
+      
+      allProductIngredients.forEach((row: any) => {
+        if (!productIngredientsMap[row.product_code]) productIngredientsMap[row.product_code] = [];
+        productIngredientsMap[row.product_code].push(row);
+      });
+
+      // product_doughs から使われる全 dough_code を抽出
+      const doughCodesSet = new Set<string>();
+      allProductDoughs.forEach((row: any) => doughCodesSet.add(row.dough_code));
+      const doughCodes = Array.from(doughCodesSet);
+
+      if (doughCodes.length > 0) {
+        const doughPlaceholders = doughCodes.map(() => '?').join(',');
+        
+        // 3. sub_doughs
+        const allSubDoughs = await db.all(`
+          SELECT dough_id, dough_name, base_dough_id, base_dough_name, base_dough_amount
+          FROM sub_doughs
+          WHERE tenant_id = ? AND dough_id IN (${doughPlaceholders})
+        `, [user.tenant_id, ...doughCodes]);
+        
+        allSubDoughs.forEach((row: any) => {
+          subDoughMap[row.dough_id] = row;
+          masterDoughNameMap[row.dough_id] = row.dough_name; // 最新のマスター名として保持
+        });
+
+        // 4. sub_dough_ingredients
+        const allSubDoughIngs = await db.all(`
+          SELECT dough_id, ingredient_code, ingredient_name, ingredient_amount
+          FROM sub_dough_ingredients
+          WHERE tenant_id = ? AND dough_id IN (${doughPlaceholders})
+        `, [user.tenant_id, ...doughCodes]);
+
+        allSubDoughIngs.forEach((row: any) => {
+          if (!subDoughIngredientsMap[row.dough_id]) subDoughIngredientsMap[row.dough_id] = [];
+          subDoughIngredientsMap[row.dough_id].push(row);
+        });
+
+        // 5. doughs (レシピとしての生地構成材料)
+        const allDoughIngs = await db.all(`
+          SELECT dough_id, dough_name, ingredient_code, ingredient_name, bakers_percent
+          FROM doughs
+          WHERE tenant_id = ? AND dough_id IN (${doughPlaceholders})
+        `, [user.tenant_id, ...doughCodes]);
+
+        allDoughIngs.forEach((row: any) => {
+          if (!doughIngredientsMap[row.dough_id]) doughIngredientsMap[row.dough_id] = [];
+          doughIngredientsMap[row.dough_id].push(row);
+          if (row.dough_name) masterDoughNameMap[row.dough_id] = row.dough_name;
+        });
+      }
+    }
+    console.timeEnd('fetch_master_data');
+
+    console.time('plan_calculation');
+    // ==========================================
     // A. ベース生地のミキシング計画 (productionPlan)
     // ==========================================
     const doughRequirements: Record<string, {
@@ -144,22 +234,18 @@ export async function GET(request: Request) {
     }> = {};
 
     for (const product of orderedProducts) {
-      const doughsForProduct = await db.all(`
-        SELECT dough_code, dough_name, dough_amount
-        FROM product_doughs
-        WHERE product_code = ? AND tenant_id = ?
-      `, [product.product_code, user.tenant_id]);
+      const doughsForProduct = productDoughsMap[product.product_code] || [];
 
       for (const pd of doughsForProduct) {
-        const subDough = await db.get('SELECT * FROM sub_doughs WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
+        const subDough = subDoughMap[pd.dough_code];
         
         if (subDough) {
-          const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
-            subIngs.sort((a, b) => {
-              if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
-              if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
-              return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
-            });
+          let subIngs = subDoughIngredientsMap[pd.dough_code] || [];
+          subIngs = [...subIngs].sort((a, b) => {
+            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+            return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
+          });
           
           if (!subDoughRequirements[pd.dough_code]) {
             subDoughRequirements[pd.dough_code] = {
@@ -175,7 +261,6 @@ export async function GET(request: Request) {
           const requiredSubDoughGrams = pd.dough_amount * product.total_quantity;
           subDoughRequirements[pd.dough_code].totalAmountGrams += requiredSubDoughGrams;
           
-          // ベース生地も必要な標準生地として加算
           if (!doughRequirements[subDough.base_dough_id]) {
             doughRequirements[subDough.base_dough_id] = {
               doughCode: subDough.base_dough_id,
@@ -254,42 +339,50 @@ export async function GET(request: Request) {
       });
     }
 
+    // 遅延読み込みされた doughRequirements（ベース生地など）について、追加でマスタを取得する必要があるか確認
+    const missingDoughCodes = Object.keys(doughRequirements).filter(code => !doughIngredientsMap[code]);
+    if (missingDoughCodes.length > 0) {
+        const placeholders = missingDoughCodes.map(() => '?').join(',');
+        const additionalDoughIngs = await db.all(`
+          SELECT dough_id, dough_name, ingredient_code, ingredient_name, bakers_percent
+          FROM doughs
+          WHERE tenant_id = ? AND dough_id IN (${placeholders})
+        `, [user.tenant_id, ...missingDoughCodes]);
+        additionalDoughIngs.forEach((row: any) => {
+          if (!doughIngredientsMap[row.dough_id]) doughIngredientsMap[row.dough_id] = [];
+          doughIngredientsMap[row.dough_id].push(row);
+          if (row.dough_name) masterDoughNameMap[row.dough_id] = row.dough_name;
+        });
+    }
+
     for (const doughCode in doughRequirements) {
       const req = doughRequirements[doughCode];
       const totalAmountToMix = req.totalAmountGrams;
       
-      const recipeIngredients = await db.all(`
-        SELECT d.ingredient_code, d.ingredient_name, d.bakers_percent
-        FROM doughs d
-        WHERE d.dough_id = ? AND d.tenant_id = ?
-        `, [doughCode, user.tenant_id]);
-        recipeIngredients.sort((a, b) => {
-          if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
-          if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
-          return (b.bakers_percent || 0) - (a.bakers_percent || 0);
-        });
+      let recipeIngredients = doughIngredientsMap[doughCode] || [];
+      recipeIngredients = [...recipeIngredients].sort((a, b) => {
+        if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+        if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+        return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+      });
 
       if (recipeIngredients.length === 0) continue; 
       
-      const latestDoughName = recipeIngredients[0].dough_name || req.doughName;
+      const latestDoughName = masterDoughNameMap[doughCode] || recipeIngredients[0].dough_name || req.doughName;
 
       const totalBakersPercent = recipeIngredients.reduce((sum, item) => sum + item.bakers_percent, 0);
       
-      // 粉の割合を計算（名前から推測するか、暗黙的に100%とする。今回は仕様に合わせて100とする）
       const flourBakersPercent = 100;
       const totalFlourWeightGrams = totalAmountToMix * (flourBakersPercent / totalBakersPercent);
 
-      // 50kg制限に基づいて分割（バッチ数）
       const NumberOfBatches = Math.ceil(totalAmountToMix / MIXER_LIMIT_G);
       const batches = [];
       let remainingMass = totalAmountToMix;
 
       for (let i = 0; i < NumberOfBatches; i++) {
-        // このバッチの総重量（最大50kg）
         const batchWeight = Math.min(remainingMass, MIXER_LIMIT_G);
         remainingMass -= batchWeight;
 
-        // このバッチの粉の重量
         const batchFlourWeight = batchWeight * (flourBakersPercent / totalBakersPercent);
 
         const ingredients = recipeIngredients.map(ing => {
@@ -326,28 +419,15 @@ export async function GET(request: Request) {
     const productMixingPlan = [];
 
     for (const product of orderedProducts) {
-      const productIngredients = await db.all(`
-        SELECT ingredient_code, ingredient_name, ingredient_amount
-        FROM product_ingredients
-        WHERE product_code = ? AND tenant_id = ?
-      `, [product.product_code, user.tenant_id]);
-
-      const doughsForProduct = await db.all(`
-        SELECT dough_code, dough_name, dough_amount
-        FROM product_doughs
-        WHERE product_code = ? AND tenant_id = ?
-      `, [product.product_code, user.tenant_id]);
+      const productIngredients = productIngredientsMap[product.product_code] || [];
+      const doughsForProduct = productDoughsMap[product.product_code] || [];
 
       if (productIngredients.length === 0 && doughsForProduct.length === 0) continue;
 
-      // 最新の生地名称をマスターから確実に取得して連結
       const latestDoughNames = [];
       for (const d of doughsForProduct) {
-        let masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, user.tenant_id]);
-        if (!masterDough) {
-          masterDough = await db.get('SELECT dough_name FROM sub_doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, user.tenant_id]);
-        }
-        latestDoughNames.push(masterDough ? masterDough.dough_name : d.dough_name);
+        const name = masterDoughNameMap[d.dough_code] || d.dough_name;
+        latestDoughNames.push(name);
       }
       
       const totalDoughAmountPerItem = doughsForProduct.reduce((sum, d) => sum + d.dough_amount, 0);
@@ -358,13 +438,9 @@ export async function GET(request: Request) {
 
       const totalQty = product.total_quantity;
       
-      // 【現場からのご要望: 1回分50kg制限】
-      // 生地1個分の重量 ＋ 副材料1個分の合計重量
       const weightPerItem = totalDoughAmountPerItem + totalSubIngredientsAmountPerItem;
       
-      // 50kg(50,000g) を 1個あたりの総重量で割って、1バッチに収まる最大個数を算出
       let maxBatchesQty = Math.floor(MIXER_LIMIT_G / weightPerItem);
-      // 万が一1個で50kgを超える異常値の場合は、最低1個は作れるようにする
       if (maxBatchesQty < 1) {
         maxBatchesQty = 1;
       }
@@ -391,7 +467,7 @@ export async function GET(request: Request) {
 
         productBatches.push({
           batchNumber: i + 1,
-          batchQuantity: batchQty, // (max = maxBatchesQty)
+          batchQuantity: batchQty,
           doughCode: combinedDoughCode,
           doughName: combinedDoughName,
           totalDoughWeightGrams: Math.round(totalDoughAmountPerItem * batchQty * 100) / 100,
@@ -414,7 +490,6 @@ export async function GET(request: Request) {
     const wipMixingPlan: any[] = [];
     const wipRequirements: Record<string, any> = {};
 
-    // 1. 全ての生産計画（生地・商品）から、使用される仕掛品を抽出
     const allIngredientsList: any[] = [];
     productionPlan.forEach(plan => {
       plan.batches.forEach(batch => {
@@ -431,8 +506,6 @@ export async function GET(request: Request) {
       });
     });
 
-    // 2. 材料のうち、wipsテーブルに存在するものを仕掛品として集計
-    // 大量のクエリを避けるため、一括で仕掛品一覧を取得
     const wipsInDb = await db.all('SELECT wip_code, wip_name FROM wips WHERE tenant_id = ?', [user.tenant_id]);
     const wipCodes = new Set(wipsInDb.map((w: any) => w.wip_code));
 
@@ -449,15 +522,26 @@ export async function GET(request: Request) {
       }
     });
 
-    // 3. 各仕掛品についてバッチ分割と構成材料の計算
+    const reqWipCodes = Object.keys(wipRequirements);
+    const wipIngredientsMap: Record<string, any[]> = {};
+    
+    if (reqWipCodes.length > 0) {
+      const placeholders = reqWipCodes.map(() => '?').join(',');
+      const allWipIngredients = await db.all(`
+        SELECT wip_code, ingredient_code, ingredient_name, ingredient_amount
+        FROM wip_ingredients
+        WHERE tenant_id = ? AND wip_code IN (${placeholders})
+      `, [user.tenant_id, ...reqWipCodes]);
+      
+      allWipIngredients.forEach((row: any) => {
+        if (!wipIngredientsMap[row.wip_code]) wipIngredientsMap[row.wip_code] = [];
+        wipIngredientsMap[row.wip_code].push(row);
+      });
+    }
+
     for (const wipCode in wipRequirements) {
       const req = wipRequirements[wipCode];
-      
-      const recipeIngredients = await db.all(`
-        SELECT ingredient_code, ingredient_name, ingredient_amount
-        FROM wip_ingredients
-        WHERE wip_code = ? AND tenant_id = ?
-      `, [wipCode, user.tenant_id]);
+      const recipeIngredients = wipIngredientsMap[wipCode] || [];
 
       if (recipeIngredients.length === 0) continue;
 
@@ -472,7 +556,6 @@ export async function GET(request: Request) {
         const batchWeight = Math.min(remainingWeight, MIXER_LIMIT_G);
         remainingWeight -= batchWeight;
 
-        // レシピの比率に基づいて各材料の必要量を計算
         const batchIngredients = recipeIngredients.map((ing: any) => {
           const ratio = ing.ingredient_amount / totalRecipeGrams;
           return {
@@ -496,6 +579,8 @@ export async function GET(request: Request) {
         batches: wipBatches
       });
     }
+    
+    console.timeEnd('plan_calculation');
 
     return NextResponse.json({
       success: true,
