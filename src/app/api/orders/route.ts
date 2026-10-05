@@ -97,10 +97,8 @@ export async function POST(request: Request) {
     let storeId: number | null = null;
 
     if (['admin', 'master', 'manager'].includes(user.role)) {
-      // 管理者・マスター・マネージャーはクッキーで指定された店舗をそのまま使用
       storeId = requestedStoreId;
     } else if (user.role === 'chef') {
-      // シェフは所属店舗のみアクセス可能
       const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
       if (!userStores || userStores.length === 0) {
         return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
@@ -109,7 +107,6 @@ export async function POST(request: Request) {
       if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
         storeId = requestedStoreId;
       } else {
-        // 未指定または不正なIDの場合は所属店舗の1つ目をデフォルトに
         storeId = allowedStoreIds[0];
       }
     } else {
@@ -135,16 +132,65 @@ export async function POST(request: Request) {
     }
 
     let insertedCount = 0;
-    let updatedCount = 0;
 
     // トランザクションを開始し、セッションに user_id, store_id, role を記録する（監査ログとRLS用）
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
-      // モード: replace（同一日付のオーダーをすべて削除してから追加）
-      if (mode === 'replace') {
-        const placeholders = uniqueDates.map(() => '?').join(',');
-        await txDb.run(`DELETE FROM orders WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
+      
+      console.time('order_bulk_processing');
+      // ===== 1. 事前一括取得 (バルク取得) =====
+      // アップロードされたすべての productCode (alias_code の可能性あり) を抽出
+      const rawProductCodes = [...new Set(orders.map((o: any) => o.productKey).filter(Boolean))];
+      
+      const aliasMap = new Map<string, { product_code: string, product_name: string }>();
+      if (rawProductCodes.length > 0) {
+        const placeholders = rawProductCodes.map(() => '?').join(',');
+        const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
+        
+        let aliasQuery = '';
+        let aliasParams = [];
+        if (tenantId) {
+          aliasQuery = `SELECT a.alias_code, p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code IN (${placeholders}) AND a.tenant_id = ?`;
+          aliasParams = [...rawProductCodes, tenantId];
+        } else {
+          aliasQuery = `SELECT a.alias_code, p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code IN (${placeholders})`;
+          aliasParams = [...rawProductCodes];
+        }
+        
+        const aliasRecords = await txDb.all(aliasQuery, aliasParams);
+        aliasRecords.forEach((row: any) => {
+          aliasMap.set(row.alias_code, { product_code: row.product_code, product_name: row.product_name });
+        });
       }
 
+      // ===== 2. 既存オーダーのメモリ上への一括ロード =====
+      // uniqueDates に該当するこの店舗のオーダーをすべてロードする
+      const datePlaceholders = uniqueDates.map(() => '?').join(',');
+      const existingOrders = await txDb.all(
+        `SELECT order_date, store_name, delivery_shift, product_code, product_name, quantity FROM orders WHERE store_id = ? AND order_date IN (${datePlaceholders})`,
+        [storeId, ...uniqueDates]
+      );
+      
+      // 合算用 Map: キー = "YYYY-MM-DD_店舗名_便名_商品コード"
+      const mergedOrdersMap = new Map<string, any>();
+
+      // replaceモードでなければ既存データをMapにセット
+      if (mode !== 'replace') {
+        existingOrders.forEach((row: any) => {
+          const shift = row.delivery_shift || '';
+          const key = `${row.order_date}_${row.store_name}_${shift}_${row.product_code}`;
+          mergedOrdersMap.set(key, {
+            order_date: row.order_date,
+            store_name: row.store_name,
+            delivery_shift: shift,
+            product_code: row.product_code,
+            product_name: row.product_name,
+            quantity: Number(row.quantity) || 0,
+            is_new: false // 既存データ由来
+          });
+        });
+      }
+
+      // ===== 3. 新規オーダーの合算処理 =====
       for (const order of orders) {
         const dateToSave = order.orderDate || uniqueDates[0];
         const storeName = order.customerName || '不明な店舗';
@@ -153,66 +199,74 @@ export async function POST(request: Request) {
         let productName = order.productName || '';
         const quantity = Number(order.quantity) || 0;
 
-        // 【エイリアス置換処理】
-        // インポートされた商品コードが「別名（エイリアス）コード」として登録されている場合、代表のコードと名前に自動置換する
-        const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
-        if (productCode && tenantId) {
-          const aliasRecord = await txDb.get(
-            'SELECT p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code = ? AND a.tenant_id = ?',
-            [productCode, tenantId]
-          );
-          if (aliasRecord) {
-            productCode = aliasRecord.product_code;
-            productName = aliasRecord.product_name;
-          }
-        } else if (productCode && !tenantId) {
-          // super_admin 用 (テナント指定なし)
-          const aliasRecord = await txDb.get(
-            'SELECT p.product_code, p.product_name FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code = ?',
-            [productCode]
-          );
-          if (aliasRecord) {
-            productCode = aliasRecord.product_code;
-            productName = aliasRecord.product_name;
-          }
+        if (productCode && aliasMap.has(productCode)) {
+          const alias = aliasMap.get(productCode)!;
+          productCode = alias.product_code;
+          productName = alias.product_name;
         }
 
-        // モード: append の場合は、すでに同じ店舗・便・商品のものがあるか確認し、あれば加算する
-        if (mode === 'append') {
-          const existing = await txDb.get(
-            'SELECT id, quantity FROM orders WHERE store_id = ? AND order_date = ? AND store_name = ? AND delivery_shift = ? AND product_code = ?',
-            [storeId, dateToSave, storeName, deliveryShift, productCode]
-          );
-
-          if (existing) {
-            await txDb.run(
-              'UPDATE orders SET quantity = quantity + ? WHERE id = ?',
-              [quantity, existing.id]
-            );
-            updatedCount++;
-            continue; // すでに更新したため、INSERTはスキップ
-          }
+        const key = `${dateToSave}_${storeName}_${deliveryShift}_${productCode}`;
+        
+        if (mergedOrdersMap.has(key)) {
+          const existing = mergedOrdersMap.get(key);
+          existing.quantity += quantity;
+          existing.is_new = true; // 今回アップロードされたデータが含まれているため、処理カウントの対象とする
+        } else {
+          mergedOrdersMap.set(key, {
+            order_date: dateToSave,
+            store_name: storeName,
+            delivery_shift: deliveryShift,
+            product_code: productCode,
+            product_name: productName,
+            quantity: quantity,
+            is_new: true
+          });
         }
-
-        // 存在しない、または replace モードの場合は新規INSERT
-        await txDb.run(
-          'INSERT INTO orders (store_id, order_date, store_name, delivery_shift, product_code, product_name, quantity) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [storeId, dateToSave, storeName, deliveryShift, productCode, productName, quantity]
-        );
-        insertedCount++;
       }
+
+      const toInsertData = Array.from(mergedOrdersMap.values());
+      toInsertData.forEach(item => {
+          if (item.is_new) insertedCount++;
+      });
+
+      // ===== 4. DELETE & バルクINSERT =====
+      if (toInsertData.length > 0 || mode === 'replace') {
+         // まず、対象日のオーダーを全消去
+         await txDb.run(`DELETE FROM orders WHERE store_id = ? AND order_date IN (${datePlaceholders})`, [storeId, ...uniqueDates]);
+         
+         // チャンク単位で バルクINSERT
+         const chunkSize = 200;
+         for (let i = 0; i < toInsertData.length; i += chunkSize) {
+            const chunk = toInsertData.slice(i, i + chunkSize);
+            const valuePlaceholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+            const flatValues = chunk.flatMap(item => [
+                storeId,
+                item.order_date,
+                item.store_name,
+                item.delivery_shift,
+                item.product_code,
+                item.product_name,
+                item.quantity
+            ]);
+            await txDb.run(`
+               INSERT INTO orders (store_id, order_date, store_name, delivery_shift, product_code, product_name, quantity)
+               VALUES ${valuePlaceholders}
+            `, flatValues);
+         }
+      }
+      console.timeEnd('order_bulk_processing');
     });
 
     const msg = mode === 'replace' 
-      ? `${insertedCount}件の注文データを置き換えました` 
-      : `${insertedCount}件を新規追加、${updatedCount}件を合算更新しました`;
+      ? `指定日の注文データを置き換えました` 
+      : `${insertedCount}件のオーダー明細を登録・合算しました`;
 
     return NextResponse.json({ 
       success: true, 
       message: msg,
-      count: insertedCount + updatedCount
+      count: insertedCount
     });
-    } catch (error: any) {
+  } catch (error: any) {
     console.error('Error saving orders:', error);
     return NextResponse.json({ error: 'データベースへの保存に失敗しました', details: error.message || String(error) }, { status: 500 });
   }
