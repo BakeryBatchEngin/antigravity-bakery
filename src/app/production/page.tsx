@@ -313,6 +313,9 @@ export default function ProductionPlanPage() {
   const [mixers, setMixers] = useState<MixerCapacity[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [isMobileDetailView, setIsMobileDetailView] = useState<boolean>(false);
+  // 生地まとめアイコンの展開状態（展開中の生地コード一覧。初期は全てまとめ表示）
+  const [expandedDoughCodes, setExpandedDoughCodes] = useState<string[]>([]);
+
   const [flatBatches, setFlatBatches] = useState<FlatBatch[]>([]);
   const [flatProductBatches, setFlatProductBatches] = useState<FlatProductBatch[]>([]);
   const [flatWipBatches, setFlatWipBatches] = useState<FlatWipBatch[]>([]);
@@ -1587,6 +1590,50 @@ export default function ProductionPlanPage() {
     }
   }, [selectedBatchId, flatBatches, flatProductBatches]);
 
+  // 生地まとめアイコン用：オーダー商品を「生地コード」ごとにまとめる（表示専用・元データは変更しない）
+  const productGroups = useMemo(() => {
+    type Row = {
+      productCode: string;
+      productName: string;
+      totalQty: number;
+      totalDough: number;
+      hasSub: boolean;
+      // 通常/追加/再仕込みの内訳
+      normal: { qty: number; dough: number };
+      additional: { qty: number; dough: number };
+      remake: { qty: number; dough: number };
+    };
+    type Group = { doughCode: string; doughName: string; batches: FlatProductBatch[]; rows: Row[] };
+    const groups: Group[] = [];
+    flatProductBatches.forEach(b => {
+      let g = groups.find(x => x.doughCode === b.doughCode);
+      if (!g) {
+        g = { doughCode: b.doughCode, doughName: b.doughName, batches: [], rows: [] };
+        groups.push(g);
+      }
+      g.batches.push(b);
+      let r = g.rows.find(x => x.productCode === b.productCode);
+      if (!r) {
+        r = {
+          productCode: b.productCode, productName: b.productName, totalQty: 0, totalDough: 0, hasSub: false,
+          normal: { qty: 0, dough: 0 }, additional: { qty: 0, dough: 0 }, remake: { qty: 0, dough: 0 }
+        };
+        g.rows.push(r);
+      }
+      // 現在の個数に合わせた生地使用量（詳細画面の計算と同じ式）
+      const safeOrg = b.originalBatchQuantity || 1;
+      const dough = Math.round((b.originalTotalDoughWeightGrams / safeOrg) * b.currentBatchQuantity * 100) / 100;
+      r.totalQty += b.currentBatchQuantity;
+      r.totalDough += dough;
+      if (b.baseIngredients && b.baseIngredients.length > 0) r.hasSub = true;
+      const bucket = b.isRemake ? r.remake : (b.isAdditional ? r.additional : r.normal);
+      bucket.qty += b.currentBatchQuantity;
+      bucket.dough += dough;
+    });
+    return groups;
+  }, [flatProductBatches]);
+
+
   // フォーマット用ユーティリティ
   const formatKg = (g: number) => {
     return (g / 1000).toFixed(0); // リスト用は小数点除外(デザイン合わせ)
@@ -1605,7 +1652,7 @@ export default function ProductionPlanPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900">
+    <div className="flex flex-col h-dvh bg-slate-100 dark:bg-slate-900">
       {/* 画面ヘッダー部 */}
       <div className="flex-none flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-800 p-4 sm:px-8 border-b border-slate-200 dark:border-slate-700 shadow-sm z-10">
         <div>
@@ -1703,7 +1750,7 @@ export default function ProductionPlanPage() {
       </div>
 
       {/* メインコンテンツエリア */}
-      <div className="flex-1 overflow-hidden flex flex-col sm:flex-row text-slate-800 dark:text-slate-100">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col sm:flex-row text-slate-800 dark:text-slate-100">
         
         {/* ローディング・エラー・データなし時の表示 */}
         {isLoading && (
@@ -1734,7 +1781,7 @@ export default function ProductionPlanPage() {
         {!isLoading && flatBatches.length > 0 && (
           <>
             {/* 左ペイン：バッチリスト */}
-            <div className={`w-full sm:w-1/3 md:w-80 lg:w-96 flex-none bg-slate-200/50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 overflow-y-auto p-4 space-y-4 shadow-inner ${isMobileDetailView ? 'hidden sm:block' : 'block'}`}>
+            <div className={`w-full sm:w-1/3 md:w-80 lg:w-96 flex-1 min-h-0 sm:flex-none bg-slate-200/50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 overflow-y-auto p-4 pb-32 sm:pb-8 space-y-4 shadow-inner ${isMobileDetailView ? 'hidden sm:block' : 'block'}`}>
               {flatBatches.map(batch => {
                 const isSelected = selectedBatchId === batch.id;
                 const currentFlourWeight = batch.currentFlourWeightGrams;
@@ -2026,7 +2073,72 @@ export default function ProductionPlanPage() {
                     <span className="text-2xl">🥐</span> オーダー商品
                   </h3>
                   <div className="space-y-4">
-                  {flatProductBatches.map(batch => {
+                  {productGroups.map(group => {
+                    const isExpanded = expandedDoughCodes.includes(group.doughCode);
+                    const toggleGroup = () => setExpandedDoughCodes(prev => prev.includes(group.doughCode) ? prev.filter(x => x !== group.doughCode) : [...prev, group.doughCode]);
+                    const fmtRowG = (g: number) => Math.round(g).toLocaleString();
+                    const groupAllExecuted = group.batches.length > 0 && group.batches.every(b => executedBatchIds.includes(b.id));
+                    const hasSelectedInGroup = group.batches.some(b => b.id === selectedBatchId);
+                    if (!isExpanded) {
+                      // ===== まとめアイコン（折りたたみ表示） =====
+                      return (
+                        <div
+                          key={'group-' + group.doughCode}
+                          onClick={toggleGroup}
+                          className={`cursor-pointer rounded-xl bg-white dark:bg-slate-800 border-l-8 border-l-blue-700 border-y border-r shadow-md px-3 py-3 mb-2 transition-all ${hasSelectedInGroup ? 'border-amber-400 ring-2 ring-amber-300' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'}`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-mono font-black text-sm px-2 py-0.5 rounded border-2 border-amber-700 bg-amber-100 text-amber-900 flex-shrink-0">{group.doughCode || '-'}</span>
+                            <span className="font-black text-base sm:text-lg text-slate-800 dark:text-slate-100 leading-tight break-all flex-1">{group.doughName}</span>
+                            {groupAllExecuted && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 flex-shrink-0">計量済</span>}
+                            <span className="text-[10px] font-bold text-blue-700 flex-shrink-0">▼ 展開</span>
+                          </div>
+                          <div className="flex justify-end gap-1 text-[9px] font-bold text-slate-500 pr-1 mb-1">
+                            <span className="w-14 text-right">バッチ個数</span><span className="w-1" /><span className="w-[4.5rem] text-right">生地使用量</span><span className="w-5 text-center">副材</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {group.rows.map(r => {
+                              const extras = [
+                                { label: '追加', color: 'bg-lime-100 text-lime-800 border-lime-400', v: r.additional },
+                                { label: '再仕込み', color: 'bg-rose-100 text-rose-800 border-rose-400', v: r.remake },
+                              ].filter(e => e.v.qty > 0);
+                              return (
+                                <div key={r.productCode}>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate flex-1 min-w-0">{r.productName}</span>
+                                    <span className="font-black text-base text-slate-900 dark:text-white w-14 text-right whitespace-nowrap">{r.totalQty}<span className="text-[10px] font-bold ml-0.5">個</span></span>
+                                    <span className="text-slate-300">/</span>
+                                    <span className="font-black text-base text-amber-700 dark:text-amber-400 w-[4.5rem] text-right whitespace-nowrap">{fmtRowG(r.totalDough)}<span className="text-[10px] font-bold ml-0.5">g</span></span>
+                                    <span className="w-5 text-center font-black text-red-600">{r.hasSub ? '※' : ''}</span>
+                                  </div>
+                                  {extras.length > 0 && (
+                                    <div className="flex flex-wrap justify-end gap-1 mt-0.5 pr-6">
+                                      {extras.map(e => (
+                                        <span key={e.label} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${e.color}`}>
+                                          うち{e.label} {e.v.qty}個 / {fmtRowG(e.v.dough)}g
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                    // ===== 展開表示：見出し＋従来のバッチアイコン =====
+                    return (
+                    <div key={'group-' + group.doughCode} className="space-y-4 rounded-xl border-l-8 border-l-blue-700 bg-blue-50/40 dark:bg-slate-700/20 pl-2 py-2 mb-2">
+                      <button
+                        onClick={toggleGroup}
+                        className="w-full flex items-center gap-2 px-2 py-2 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 shadow-sm text-left"
+                      >
+                        <span className="font-mono font-black text-sm px-2 py-0.5 rounded border-2 border-amber-700 bg-amber-100 text-amber-900 flex-shrink-0">{group.doughCode || '-'}</span>
+                        <span className="font-black text-base text-slate-800 dark:text-slate-100 flex-1 break-all">{group.doughName}</span>
+                        <span className="text-xs font-bold text-blue-700 flex-shrink-0">▲ 閉じる</span>
+                      </button>
+                    {group.batches.map(batch => {
                     const isSelected = selectedBatchId === batch.id;
                     const currentQty = batch.currentBatchQuantity;
                     
@@ -2048,6 +2160,7 @@ export default function ProductionPlanPage() {
                       <div 
                         key={batch.id} 
                         onClick={() => { setSelectedBatchId(batch.id); setIsMobileDetailView(true); }}
+                        onDoubleClick={() => setExpandedDoughCodes(prev => prev.filter(x => x !== group.doughCode))}
                         className={`
                           cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200 flex flex-col relative overflow-hidden border-l-4 mb-2
                           ${isExecuted 
@@ -2172,6 +2285,9 @@ export default function ProductionPlanPage() {
                       </div>
                     );
                   })}
+                    </div>
+                    );
+                  })}
                   </div>
                 </div>
               )}
@@ -2244,7 +2360,7 @@ export default function ProductionPlanPage() {
             )}
 
             {/* 右ペイン：詳細表示 (黄色の枠線のデザイン) */}
-            <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center items-start ${!isMobileDetailView ? 'hidden sm:flex' : 'flex'}`}>
+            <div className={`flex-1 min-h-0 overflow-y-auto p-4 sm:p-8 flex justify-center items-start ${!isMobileDetailView ? 'hidden sm:flex' : 'flex'}`}>
               {selectedBatchDetail ? (
                 <div className="w-full max-w-3xl flex flex-col gap-2">
                   <button
