@@ -140,46 +140,112 @@ export async function POST(request: Request) {
     let count = 0;
 
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
-      // replace モードの場合は同じ日付の内訳を全消去
-      if (mode === 'replace') {
-        const placeholders = uniqueDates.map(() => '?').join(',');
-        await txDb.run(`DELETE FROM order_breakdowns WHERE store_id = ? AND order_date IN (${placeholders})`, [storeId, ...uniqueDates]);
-      }
-
-      for (const bd of breakdowns) {
-        if (mode === 'append') {
-          const existing = await txDb.get(
-            `SELECT id, quantity FROM order_breakdowns
-             WHERE store_id = ? AND order_date = ? AND product_code = ? AND display_name = ?`,
-            [storeId, bd.order_date, bd.product_code, bd.display_name]
-          );
-
-          if (existing) {
-            await txDb.run(
-              `UPDATE order_breakdowns SET quantity = quantity + ? WHERE id = ?`,
-              [bd.quantity, existing.id]
-            );
-            count++;
-            continue; // UPDATEしたのでINSERTはスキップ
-          }
+      console.time('order_breakdowns_bulk_processing');
+      
+      // ===== 1. エイリアス（別名）マスタの事前一括取得 =====
+      // orders側と同様に内訳データ側でも product_code のエイリアス置換を行わないと不整合が起きる
+      const rawProductCodes = [...new Set(breakdowns.map((b: any) => b.product_code).filter(Boolean))];
+      const aliasMap = new Map<string, string>(); // alias_code -> master product_code
+      
+      if (rawProductCodes.length > 0) {
+        const placeholders = rawProductCodes.map(() => '?').join(',');
+        const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
+        
+        let aliasQuery = '';
+        let aliasParams = [];
+        if (tenantId) {
+          aliasQuery = `SELECT a.alias_code, p.product_code FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code IN (${placeholders}) AND a.tenant_id = ?`;
+          aliasParams = [...rawProductCodes, tenantId];
+        } else {
+          aliasQuery = `SELECT a.alias_code, p.product_code FROM product_aliases a JOIN products p ON a.product_code = p.product_code WHERE a.alias_code IN (${placeholders})`;
+          aliasParams = [...rawProductCodes];
         }
-
-        await txDb.run(
-          `INSERT INTO order_breakdowns
-             (store_id, order_date, product_code, customer_name, dept_name, display_name, quantity)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            storeId,
-            bd.order_date,
-            bd.product_code,
-            bd.customer_name,
-            bd.dept_name,
-            bd.display_name,
-            bd.quantity,
-          ]
-        );
-        count++;
+        
+        const aliasRecords = await txDb.all(aliasQuery, aliasParams);
+        aliasRecords.forEach((row: any) => {
+          aliasMap.set(row.alias_code, row.product_code);
+        });
       }
+
+      // ===== 2. 既存内訳データの一括ロード =====
+      const datePlaceholders = uniqueDates.map(() => '?').join(',');
+      const existingBreakdowns = await txDb.all(
+        `SELECT order_date, product_code, customer_name, dept_name, display_name, quantity FROM order_breakdowns WHERE store_id = ? AND order_date IN (${datePlaceholders})`,
+        [storeId, ...uniqueDates]
+      );
+
+      // 合算用 Map: キー = "YYYY-MM-DD_商品コード_表示名"
+      const mergedMap = new Map<string, any>();
+      
+      if (mode !== 'replace') {
+         existingBreakdowns.forEach((row: any) => {
+            const key = `${row.order_date}_${row.product_code}_${row.display_name}`;
+            mergedMap.set(key, {
+               order_date: row.order_date,
+               product_code: row.product_code,
+               customer_name: row.customer_name,
+               dept_name: row.dept_name,
+               display_name: row.display_name,
+               quantity: Number(row.quantity) || 0,
+               is_new: false
+            });
+         });
+      }
+
+      // ===== 3. 新規内訳の合算 =====
+      for (const bd of breakdowns) {
+         let pCode = bd.product_code || '';
+         if (pCode && aliasMap.has(pCode)) {
+           pCode = aliasMap.get(pCode)!;
+         }
+
+         const key = `${bd.order_date}_${pCode}_${bd.display_name}`;
+         if (mergedMap.has(key)) {
+            const existing = mergedMap.get(key);
+            existing.quantity += (Number(bd.quantity) || 0);
+            existing.is_new = true;
+         } else {
+            mergedMap.set(key, {
+               order_date: bd.order_date,
+               product_code: pCode,
+               customer_name: bd.customer_name,
+               dept_name: bd.dept_name,
+               display_name: bd.display_name,
+               quantity: Number(bd.quantity) || 0,
+               is_new: true
+            });
+         }
+      }
+
+      const toInsertData = Array.from(mergedMap.values());
+      toInsertData.forEach(item => {
+          if (item.is_new) count++;
+      });
+
+      // ===== 4. DELETE & バルクINSERT =====
+      if (toInsertData.length > 0 || mode === 'replace') {
+         await txDb.run(`DELETE FROM order_breakdowns WHERE store_id = ? AND order_date IN (${datePlaceholders})`, [storeId, ...uniqueDates]);
+         
+         const chunkSize = 200;
+         for (let i = 0; i < toInsertData.length; i += chunkSize) {
+            const chunk = toInsertData.slice(i, i + chunkSize);
+            const valuePlaceholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+            const flatValues = chunk.flatMap(item => [
+                storeId,
+                item.order_date,
+                item.product_code,
+                item.customer_name,
+                item.dept_name,
+                item.display_name,
+                item.quantity
+            ]);
+            await txDb.run(`
+               INSERT INTO order_breakdowns (store_id, order_date, product_code, customer_name, dept_name, display_name, quantity)
+               VALUES ${valuePlaceholders}
+            `, flatValues);
+         }
+      }
+      console.timeEnd('order_breakdowns_bulk_processing');
     });
 
     return NextResponse.json({ success: true, count });
