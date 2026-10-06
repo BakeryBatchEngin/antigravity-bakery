@@ -147,8 +147,8 @@ export default function WipsMasterPage() {
         </h1>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-amber-50 border-b border-amber-100 px-6 py-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 rounded-t-xl">
           <h2 className="text-lg font-bold text-amber-800">
             {isEditing ? '仕掛品の編集' : '新規仕掛品の追加'}
           </h2>
