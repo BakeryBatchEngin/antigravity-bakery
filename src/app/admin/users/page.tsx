@@ -149,12 +149,12 @@ export default function UsersAdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-200">
+    <div>
       <main className="max-w-6xl mx-auto p-4 sm:p-6 pb-20 pt-8">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-extrabold text-white">ユーザー管理</h1>
-            <p className="text-slate-400 mt-1">システムを利用するアカウントの発行・権限設定</p>
+            <h1 className="text-3xl font-extrabold text-slate-800">ユーザー管理</h1>
+            <p className="text-slate-600 mt-1">システムを利用するアカウントの発行・権限設定</p>
           </div>
           <button 
             onClick={() => handleOpenModal()}
@@ -196,7 +196,7 @@ export default function UsersAdminPage() {
                           {user.role.toUpperCase()}
                         </span>
                       </td>
-                      <td className="p-4 text-sm text-slate-300">
+                      <td className="p-4 text-sm text-slate-700">
                         {user.store_ids && user.store_ids.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {user.store_ids.map(id => {
@@ -264,7 +264,7 @@ export default function UsersAdminPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-2">ログインID <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">ログインID <span className="text-red-400">*</span></label>
                   <input 
                     type="text" 
                     required 
@@ -274,7 +274,7 @@ export default function UsersAdminPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-2">表示名 <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">表示名 <span className="text-red-400">*</span></label>
                   <input 
                     type="text" 
                     required 
@@ -286,7 +286,7 @@ export default function UsersAdminPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-300 mb-2">権限 (Role) <span className="text-red-400">*</span></label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">権限 (Role) <span className="text-red-400">*</span></label>
                 <select 
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none font-bold"
                   value={formData.role}
@@ -325,7 +325,7 @@ export default function UsersAdminPage() {
 
               {(formData.role === 'chef' || formData.role === 'manager') && (
                 <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-3">
+                  <label className="block text-sm font-bold text-slate-700 mb-3">
                     担当店舗 <span className="text-xs text-slate-500 font-normal ml-2">※複数選択可</span>
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -357,7 +357,7 @@ export default function UsersAdminPage() {
                 <button 
                   type="button" 
                   onClick={handleCloseModal}
-                  className="px-6 py-3 font-bold text-slate-300 hover:bg-slate-700 rounded-xl transition-colors"
+                  className="px-6 py-3 font-bold text-slate-700 hover:bg-slate-700 rounded-xl transition-colors"
                 >
                   キャンセル
                 </button>

@@ -15,7 +15,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className="antialiased min-h-screen flex flex-col" suppressHydrationWarning>
+      <body className={`antialiased min-h-screen flex flex-col ${
+        process.env.NODE_ENV === 'production' 
+          ? 'bg-slate-50 text-slate-900' 
+          : 'bg-orange-50 text-orange-950'
+      }`} suppressHydrationWarning>
         <NavigationHeader />
 
         {/* メインコンテンツ部分 */}

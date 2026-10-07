@@ -111,12 +111,12 @@ export default function StoresAdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-200">
+    <div>
       <main className="max-w-5xl mx-auto p-4 sm:p-6 pb-20 pt-8">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-extrabold text-white">店舗・設備管理</h1>
-            <p className="text-slate-400 mt-1">システムで管理する店舗のマスタ設定</p>
+            <h1 className="text-3xl font-extrabold text-slate-800">店舗・設備管理</h1>
+            <p className="text-slate-600 mt-1">システムで管理する店舗のマスタ設定</p>
           </div>
           <button 
             onClick={() => handleOpenModal()}
@@ -202,7 +202,7 @@ export default function StoresAdminPage() {
               )}
 
               <div>
-                <label className="block text-sm font-bold text-slate-300 mb-2">店舗コード <span className="text-red-400">*</span></label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">店舗コード <span className="text-red-400">*</span></label>
                 <input 
                   type="text" 
                   required 
@@ -215,7 +215,7 @@ export default function StoresAdminPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-300 mb-2">店舗名 <span className="text-red-400">*</span></label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">店舗名 <span className="text-red-400">*</span></label>
                 <input 
                   type="text" 
                   required 
@@ -230,7 +230,7 @@ export default function StoresAdminPage() {
                 <button 
                   type="button" 
                   onClick={handleCloseModal}
-                  className="px-6 py-3 font-bold text-slate-300 hover:bg-slate-700 rounded-xl transition-colors"
+                  className="px-6 py-3 font-bold text-slate-700 hover:bg-slate-700 rounded-xl transition-colors"
                 >
                   キャンセル
                 </button>
