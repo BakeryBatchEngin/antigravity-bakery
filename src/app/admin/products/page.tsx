@@ -107,9 +107,32 @@ export default function ProductsMasterPage() {
     return totalCost;
   };
 
-  useEffect(() => {
+    useEffect(() => {
     fetchData();
   }, []);
+
+  // ショートカットキーの設定
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // フォーム入力中などはデフォルト挙動を妨げないようにするが、
+      // Altキーとの組み合わせなら優先して処理する
+      if (e.altKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setFormData(prev => ({
+          ...prev,
+          doughs: [...prev.doughs, { dough_code: '', dough_name: '', dough_amount: 0 }]
+        }));
+      } else if (e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setFormData(prev => ({
+          ...prev,
+          ingredients: [...prev.ingredients, { ingredient_code: '', ingredient_name: '', ingredient_amount: 0 }]
+        }));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []); // Functional updates internally ensure no dependency needed
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -467,7 +490,7 @@ export default function ProductsMasterPage() {
                 <div className="flex items-center justify-between mb-3 border-b border-blue-200 pb-2">
                   <h3 className="font-bold text-blue-800">使用生地</h3>
                   <button type="button" onClick={addDoughRow} className="px-3 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded text-sm font-bold transition-colors">
-                    ＋ 生地を追加
+                    ＋ 生地を追加 (Alt+D)
                   </button>
                 </div>
                 
@@ -502,7 +525,7 @@ export default function ProductsMasterPage() {
                 <div className="flex items-center justify-between mb-3 border-b border-green-200 pb-2">
                   <h3 className="font-bold text-green-800">使用副材料 (トッピング・充填)</h3>
                   <button type="button" onClick={addIngredientRow} className="px-3 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded text-sm font-bold transition-colors">
-                    ＋ 副材料を追加
+                    ＋ 副材料を追加 (Alt+F)
                   </button>
                 </div>
                 
