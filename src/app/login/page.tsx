@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -43,7 +43,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || '繝ｭ繧ｰ繧､繝ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆');
+        throw new Error(data.error || 'ログインに失敗しました');
       }
 
       router.push('/');
@@ -70,18 +70,18 @@ export default function LoginPage() {
     <div className={`min-h-screen flex flex-col items-center justify-center ${bgClass} p-4 sm:p-6`}>
       <div className="w-full max-w-md">
         
-        {/* 繝ｭ繧ｴ繝ｻ繧ｿ繧､繝医Ν驛ｨ蛻・*/}
+        {/* ロゴ・タイトル部分 */}
         <div className="text-center mb-8">
           <h1 className={`text-4xl font-extrabold ${textClass} tracking-tight`}>
             Bakery Batch Engine
           </h1>
           <p className={`mt-3 font-medium text-lg ${subtitleClass}`}>
-            繝吶・繧ｫ繝ｪ繝ｼ莉戊ｾｼ縺ｿ謾ｯ謠ｴ繧ｨ繝ｳ繧ｸ繝ｳ
+            ベーカリー仕込み支援エンジン
           </p>
         </div>
 
-        {/* 繝ｭ繧ｰ繧､繝ｳ繝輔か繝ｼ繝 */}
-        {/* 閭梧勹繧帝ｻ偵▲縺ｽ縺・牡(bg-slate-900)縺ｫ蜷悟喧縺輔○縲√・繝ｼ繝繝ｼ縺ｧ繧上★縺九↓蛹ｺ蛻・ｋ縺九∝ｽｱ縺縺代〒豬ｮ縺九○繧・*/}
+        {/* ログインフォーム */}
+        {/* 背景を黒っぽい色(bg-slate-900)に同化させ、ボーダーでわずかに区切るか、影だけで浮かせる */}
         <div className={`rounded-3xl overflow-hidden p-8 sm:p-10 border shadow-xl ${formCardClass}`}>
           
           {error && (
@@ -94,12 +94,12 @@ export default function LoginPage() {
             
             <div>
               <label className={`block text-sm font-bold mb-2 ml-1 ${labelClass}`}>
-                繝ｭ繧ｰ繧､繝ｳID (蠎苓・ID)
+                ログインID (店舗ID)
               </label>
               <input 
                 type="text" 
                 className={`w-full p-4 text-xl font-bold border-2 rounded-2xl focus:ring-0 outline-none transition-colors ${inputBgClass}`}
-                placeholder="ID繧貞・蜉・
+                placeholder="IDを入力"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -109,12 +109,12 @@ export default function LoginPage() {
 
             <div>
               <label className={`block text-sm font-bold mb-2 ml-1 ${labelClass}`}>
-                繝代せ繝ｯ繝ｼ繝・/ PIN
+                パスワード / PIN
               </label>
               <input 
                 type="password" 
                 className="w-full p-4 text-2xl tracking-widest font-mono font-bold text-white bg-slate-800 border-2 border-slate-700 rounded-2xl focus:bg-slate-800 focus:border-amber-500 focus:ring-0 outline-none transition-colors placeholder:text-slate-500"
-                placeholder="窶｢窶｢窶｢窶｢"
+                placeholder="••••"
                 value={passwordOrPin}
                 onChange={(e) => setPasswordOrPin(e.target.value)}
                 required
@@ -133,17 +133,17 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  繝ｭ繧ｰ繧､繝ｳ荳ｭ...
+                  ログイン中...
                 </span>
               ) : (
-                '繝ｭ繧ｰ繧､繝ｳ'
+                'ログイン'
               )}
             </button>
             
           </form>
         </div>
         
-        {/* 繝舌・繧ｸ繝ｧ繝ｳ陦ｨ遉ｺ */}
+        {/* バージョン表示 */}
         <div className="text-center mt-10">
           <p className="text-slate-500 text-sm font-medium">
             Ver. 3.43
