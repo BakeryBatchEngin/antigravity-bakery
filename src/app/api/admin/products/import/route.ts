@@ -72,50 +72,49 @@ export async function POST(request: Request) {
     });
 
     let rowCount = 0;
-    await db.run('BEGIN TRANSACTION');
 
     try {
-      for (const [product_code, data] of Array.from(productsMap.entries())) {
-        // Product自体のUpsert
-        await db.run(`
-          INSERT INTO products (product_code, product_name, retail_price, wholesale_price, tenant_id)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(product_code, tenant_id) DO UPDATE SET
-            product_name = excluded.product_name,
-            retail_price = excluded.retail_price,
-            wholesale_price = excluded.wholesale_price
-        `, [product_code, data.product_name, data.retail_price, data.wholesale_price, tenantId]);
+      await db.transaction(async (txDb) => {
+        for (const [product_code, data] of Array.from(productsMap.entries())) {
+          // Product自体のUpsert
+          await txDb.run(`
+            INSERT INTO products (product_code, product_name, retail_price, wholesale_price, tenant_id)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(product_code, tenant_id) DO UPDATE SET
+              product_name = excluded.product_name,
+              retail_price = excluded.retail_price,
+              wholesale_price = excluded.wholesale_price
+          `, [product_code, data.product_name, data.retail_price, data.wholesale_price, tenantId]);
 
-        // 部分更新のため、Excelに存在する商品コードについてのみ関連テーブルを一度削除して再挿入する
-        if (tenantId) {
-          await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
-        } else {
-          await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+          // 部分更新のため、Excelに存在する商品コードについてのみ関連テーブルを一度削除して再挿入する
+          if (tenantId) {
+            await txDb.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+            await txDb.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          } else {
+            await txDb.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
+            await txDb.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+          }
+
+          for (const d of data.doughs) {
+            await txDb.run(`
+              INSERT INTO product_doughs (product_code, product_name, dough_code, dough_name, dough_amount, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `, [product_code, data.product_name, d.dough_code, d.dough_name, d.dough_amount, tenantId]);
+          }
+
+          for (const i of data.ingredients) {
+            await txDb.run(`
+              INSERT INTO product_ingredients (product_code, product_name, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `, [product_code, data.product_name, i.ingredient_code, i.ingredient_name, i.ingredient_amount, tenantId]);
+          }
+          
+          rowCount++;
         }
+      });
 
-        for (const d of data.doughs) {
-          await db.run(`
-            INSERT INTO product_doughs (product_code, product_name, dough_code, dough_name, dough_amount, tenant_id)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `, [product_code, data.product_name, d.dough_code, d.dough_name, d.dough_amount, tenantId]);
-        }
-
-        for (const i of data.ingredients) {
-          await db.run(`
-            INSERT INTO product_ingredients (product_code, product_name, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `, [product_code, data.product_name, i.ingredient_code, i.ingredient_name, i.ingredient_amount, tenantId]);
-        }
-        
-        rowCount++;
-      }
-
-      await db.run('COMMIT');
       return NextResponse.json({ success: true, count: productsMap.size });
     } catch (e) {
-      await db.run('ROLLBACK');
       console.error('Database Error during import:', e);
       throw e;
     }

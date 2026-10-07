@@ -58,6 +58,42 @@ class PgCompatibleDb {
     await getPool().query(sql);
   }
 
+  // 権限を切り替えずにトランザクションを実行するメソッド（マスタデータ保存用）
+  async transaction(callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      
+      // トランザクション専用の互換オブジェクトを作成
+      const txDb = {
+        get: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const { rows } = await client.query(pgSql, params);
+          return rows[0] || undefined;
+        },
+        all: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const { rows } = await client.query(pgSql, params);
+          return rows;
+        },
+        run: async (sql: string, params: any[] = []) => {
+          const pgSql = convertSqliteToPg(sql);
+          const result = await client.query(pgSql, params);
+          return { changes: result.rowCount, lastID: 0 };
+        }
+      };
+
+      const result = await callback(txDb);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
   // 監査ログやRLS用のコンテキスト(ユーザーID等)をセットして、トランザクション内でクエリを実行するメソッド
   // ※ RLSを機能させるために、スーパーユーザー権限を捨てて 'authenticated' ロールに切り替えます
   async transactionWithUser(userId: number | null, storeId: number | null, role: string | null = null, callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {

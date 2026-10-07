@@ -49,9 +49,8 @@ export async function POST(request: Request) {
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
     const db = await getDb();
 
-    await db.run('BEGIN TRANSACTION');
-    try {
-      await db.run(`
+    await db.transaction(async (txDb) => {
+      await txDb.run(`
         INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price, status, tenant_id)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(ingredient_code) DO UPDATE SET
@@ -63,19 +62,16 @@ export async function POST(request: Request) {
 
       // 同一テナントの関連テーブルも連動更新
       if (tenantId) {
-        await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [ingredient_name, ingredient_code, tenantId]);
-        await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [ingredient_name, ingredient_code, tenantId]);
+        await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [ingredient_name, ingredient_code, tenantId]);
+        await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [ingredient_name, ingredient_code, tenantId]);
       } else {
-        await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
-        await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
+        await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
+        await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [ingredient_name, ingredient_code]);
       }
 
-      await db.run('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (e) {
-      await db.run('ROLLBACK');
-      throw e;
-    }
+      });
+    return NextResponse.json({ success: true });
+    
   } catch (error) {
     console.error('Failed to save ingredient:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました' }, { status: 500 });

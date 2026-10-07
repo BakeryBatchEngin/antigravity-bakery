@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // 認証不要でアクセスできるパス（ログインAPIや画像など）
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico', '/presentation', '/api/admin/migrate-wips', '/api/admin/fix-type'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico', '/presentation'];
 
 // マネージャー専用APIの許可パス（/api/reports/manager は /reports に含まれるためOK）
 
@@ -14,7 +14,7 @@ const ROLE_ACCESS = {
   chef: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/api/admin/products', '/api/admin/doughs', '/forecast'], 
 };
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 静的ファイルや公開パスはスルー
@@ -47,6 +47,17 @@ export function middleware(request: NextRequest) {
   }
 
   try {
+    // 署名の検証
+    const sigCookie = request.cookies.get('bakery_session_sig');
+    if (!sigCookie || !sigCookie.value) {
+      throw new Error("Missing signature");
+    }
+    const { verifySession } = await import('@/lib/authCrypto');
+    const isValid = await verifySession(sessionCookie.value, sigCookie.value);
+    if (!isValid) {
+      throw new Error("Invalid signature");
+    }
+
     // セッションのデコード（Base64）
     const sessionData = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
     const role = sessionData.role;
@@ -76,6 +87,24 @@ export function middleware(request: NextRequest) {
     // それ以外のロール
     const allowedPaths = ROLE_ACCESS[role as keyof typeof ROLE_ACCESS] || [];
     
+    // マスターデータの書き込み（POST/PUT/DELETE/PATCH）は master/admin/super_admin のみ許可
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+      const masterApiPrefixes = [
+        '/api/admin/ingredients', 
+        '/api/admin/doughs', 
+        '/api/admin/wips', 
+        '/api/admin/products'
+      ];
+      if (masterApiPrefixes.some(p => pathname.startsWith(p))) {
+        if (role !== 'master') {
+          return new NextResponse(
+            JSON.stringify({ error: 'Permission denied: Read-only access for master data' }), 
+            { status: 403, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+
     // トップページ（`/`）へのアクセス時は、権限に応じたポータルへ飛ばす処理は page.tsx 側で行うが
     // もし直接URLを叩かれた場合のチェック
     if (pathname !== '/') {
@@ -94,6 +123,7 @@ export function middleware(request: NextRequest) {
     // セッションデータが不正な場合はCookieを消してログインへ
     const response = NextResponse.redirect(new URL('/login', request.url));
     response.cookies.delete('bakery_session');
+    response.cookies.delete('bakery_session_sig');
     return response;
   }
 }

@@ -38,16 +38,14 @@ export async function POST(request: Request) {
     const db = await getDb();
     const excelCodes = new Set<string>();
 
-    await db.run('BEGIN TRANSACTION');
-
     try {
+      let rowCount = 0;
+      await db.transaction(async (txDb) => {
       const rowsToProcess: any[] = [];
       sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // ヘッダーはスキップ
         rowsToProcess.push(row);
       });
-
-      let rowCount = 0;
       for (const row of rowsToProcess) {
         const code = row.getCell(1).text?.trim();
         const name = row.getCell(2).text?.trim();
@@ -67,7 +65,7 @@ export async function POST(request: Request) {
         if (statusText === '削除') status = 'deleted';
 
         // 自テナントの材料のみ upsert
-        await db.run(`
+        await txDb.run(`
           INSERT INTO ingredients (ingredient_code, ingredient_name, purchase_weight, purchase_price, status, tenant_id)
           VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(ingredient_code, tenant_id) DO UPDATE SET
@@ -84,11 +82,11 @@ export async function POST(request: Request) {
 
         // 関連テーブルの名前も連動更新（自テナントのみ）
         if (tenantId) {
-          await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
-          await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
+          await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
+          await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [name, code, tenantId]);
         } else {
-          await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
-          await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
+          await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
+          await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [name, code]);
         }
 
         rowCount++;
@@ -99,27 +97,25 @@ export async function POST(request: Request) {
       /*
       let allIngredients;
       if (tenantId) {
-        allIngredients = await db.all('SELECT ingredient_code FROM ingredients WHERE tenant_id = ?', [tenantId]);
+        allIngredients = await txDb.all('SELECT ingredient_code FROM ingredients WHERE tenant_id = ?', [tenantId]);
       } else {
-        allIngredients = await db.all('SELECT ingredient_code FROM ingredients');
+        allIngredients = await txDb.all('SELECT ingredient_code FROM ingredients');
       }
 
       for (const ing of allIngredients) {
         if (!excelCodes.has(ing.ingredient_code)) {
           if (tenantId) {
-            await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ? AND tenant_id = ?", [ing.ingredient_code, tenantId]);
+            await txDb.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ? AND tenant_id = ?", [ing.ingredient_code, tenantId]);
           } else {
-            await db.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ?", [ing.ingredient_code]);
+            await txDb.run("UPDATE ingredients SET status = 'deleted' WHERE ingredient_code = ?", [ing.ingredient_code]);
           }
         }
       }
       */
 
-      await db.run('COMMIT');
+      });
       return NextResponse.json({ success: true, count: rowCount });
-    } catch (e) {
-      await db.run('ROLLBACK');
-      console.error('Database Error during import:', e);
+    } catch (e) {console.error('Database Error during import:', e);
       throw e;
     }
   } catch (error) {

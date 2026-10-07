@@ -67,6 +67,10 @@ export async function POST(request: Request) {
     };
     
     const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
+    
+    // 署名の生成
+    const { signSession } = await import('@/lib/authCrypto');
+    const signature = await signSession(sessionString);
 
     const response = NextResponse.json({ success: true, user: sessionData });
     
@@ -77,6 +81,16 @@ export async function POST(request: Request) {
       httpOnly: true,
       path: '/',
       maxAge: 60 * 60 * 24 * 7, // 1週間有効
+      sameSite: 'lax',
+    });
+
+    // 署名Cookieをセット
+    response.cookies.set({
+      name: 'bakery_session_sig',
+      value: signature,
+      httpOnly: true,
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
       sameSite: 'lax',
     });
 

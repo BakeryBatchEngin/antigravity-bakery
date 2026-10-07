@@ -158,7 +158,7 @@ export default function IngredientsMasterPage() {
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-black text-white flex items-center gap-3">
+        <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
           <span className="text-4xl text-amber-500">🍳</span> Ingredient Master
         </h1>
         <div className="flex gap-3">

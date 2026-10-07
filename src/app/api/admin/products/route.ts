@@ -110,9 +110,8 @@ export async function POST(request: Request) {
     // super_admin はリクエストのtenant_id、それ以外は自テナント
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
 
-    await db.run('BEGIN TRANSACTION');
-    try {
-      await db.run(`
+    await db.transaction(async (txDb) => {
+      await txDb.run(`
         INSERT INTO products (product_code, product_name, retail_price, wholesale_price, memo, informart_url, tenant_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(product_code, tenant_id) DO UPDATE SET
@@ -124,23 +123,23 @@ export async function POST(request: Request) {
       `, [product_code, product_name, retail_price || 0, wholesale_price || 0, memo || null, informart_url || null, tenantId]);
 
       if (tenantId) {
-          await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
-          await db.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          await txDb.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          await txDb.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
+          await txDb.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [product_code, tenantId]);
         } else {
-          await db.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
-          await db.run('DELETE FROM product_aliases WHERE product_code = ?', [product_code]);
+          await txDb.run('DELETE FROM product_doughs WHERE product_code = ?', [product_code]);
+          await txDb.run('DELETE FROM product_ingredients WHERE product_code = ?', [product_code]);
+          await txDb.run('DELETE FROM product_aliases WHERE product_code = ?', [product_code]);
         }
 
       if (hasDough) {
         for (const d of doughs) {
           let nameToInsert = d.dough_name;
           if (!nameToInsert) {
-            const masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, tenantId]);
+            const masterDough = await txDb.get('SELECT dough_name FROM doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, tenantId]);
             nameToInsert = masterDough ? masterDough.dough_name : '不明な生地';
           }
-          await db.run(`
+          await txDb.run(`
             INSERT INTO product_doughs (product_code, product_name, dough_code, dough_name, dough_amount, tenant_id)
             VALUES (?, ?, ?, ?, ?, ?)
           `, [product_code, product_name, d.dough_code, nameToInsert, d.dough_amount, tenantId]);
@@ -151,10 +150,10 @@ export async function POST(request: Request) {
         for (const ing of ingredients) {
           let nameToInsert = ing.ingredient_name;
           if (!nameToInsert) {
-            const masterIng = await db.get('SELECT ingredient_name FROM ingredients WHERE ingredient_code = ? AND tenant_id = ?', [ing.ingredient_code, tenantId]);
+            const masterIng = await txDb.get('SELECT ingredient_name FROM ingredients WHERE ingredient_code = ? AND tenant_id = ?', [ing.ingredient_code, tenantId]);
             nameToInsert = masterIng ? masterIng.ingredient_name : '不明な副材料';
           }
-          await db.run(`
+          await txDb.run(`
             INSERT INTO product_ingredients (product_code, product_name, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
             VALUES (?, ?, ?, ?, ?, ?)
           `, [product_code, product_name, ing.ingredient_code, nameToInsert, ing.ingredient_amount, tenantId]);
@@ -164,19 +163,16 @@ export async function POST(request: Request) {
       if (Array.isArray(aliases) && aliases.length > 0) {
         for (const alias of aliases) {
           if (!alias.trim()) continue;
-          await db.run(`
+          await txDb.run(`
             INSERT INTO product_aliases (alias_code, product_code, tenant_id)
             VALUES (?, ?, ?)
           `, [alias.trim(), product_code, tenantId]);
         }
       }
 
-      await db.run('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (txError) {
-      await db.run('ROLLBACK');
-      throw txError;
-    }
+      });
+    return NextResponse.json({ success: true });
+    
   } catch (error) {
     console.error('Failed to save product:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました' }, { status: 500 });
@@ -207,26 +203,22 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'この商品は受注データが存在するため削除できません' }, { status: 400 });
     }
 
-    await db.run('BEGIN TRANSACTION');
-    try {
+    await db.transaction(async (txDb) => {
       const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
         if (tenantId) {
-          await db.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
-          await db.run('DELETE FROM products WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
-          await db.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await txDb.run('DELETE FROM product_aliases WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await txDb.run('DELETE FROM products WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await txDb.run('DELETE FROM product_doughs WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
+          await txDb.run('DELETE FROM product_ingredients WHERE product_code = ? AND tenant_id = ?', [code, tenantId]);
         } else {
-          await db.run('DELETE FROM product_aliases WHERE product_code = ?', [code]);
-          await db.run('DELETE FROM products WHERE product_code = ?', [code]);
-          await db.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
-          await db.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
+          await txDb.run('DELETE FROM product_aliases WHERE product_code = ?', [code]);
+          await txDb.run('DELETE FROM products WHERE product_code = ?', [code]);
+          await txDb.run('DELETE FROM product_doughs WHERE product_code = ?', [code]);
+          await txDb.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
         }
-      await db.run('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (e) {
-      await db.run('ROLLBACK');
-      throw e;
-    }
+      });
+    return NextResponse.json({ success: true });
+    
   } catch (error) {
     console.error('Failed to delete product:', error);
     return NextResponse.json({ error: 'データの削除に失敗しました' }, { status: 500 });

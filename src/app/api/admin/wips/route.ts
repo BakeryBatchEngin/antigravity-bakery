@@ -74,19 +74,18 @@ export async function POST(request: Request) {
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
     const db = await getDb();
 
-    await db.run('BEGIN TRANSACTION');
-    try {
+    await db.transaction(async (txDb) => {
       // 既存データの削除（洗い替え）
       if (tenantId) {
-        await db.run('DELETE FROM wips WHERE wip_code = ? AND tenant_id = ?', [wip_code, tenantId]);
-        await db.run('DELETE FROM wip_ingredients WHERE wip_code = ? AND tenant_id = ?', [wip_code, tenantId]);
+        await txDb.run('DELETE FROM wips WHERE wip_code = ? AND tenant_id = ?', [wip_code, tenantId]);
+        await txDb.run('DELETE FROM wip_ingredients WHERE wip_code = ? AND tenant_id = ?', [wip_code, tenantId]);
       } else {
-        await db.run('DELETE FROM wips WHERE wip_code = ?', [wip_code]);
-        await db.run('DELETE FROM wip_ingredients WHERE wip_code = ?', [wip_code]);
+        await txDb.run('DELETE FROM wips WHERE wip_code = ?', [wip_code]);
+        await txDb.run('DELETE FROM wip_ingredients WHERE wip_code = ?', [wip_code]);
       }
 
       // 1. wips に登録
-      await db.run(`
+      await txDb.run(`
         INSERT INTO wips (wip_code, wip_name, memo, informart_url, tenant_id)
         VALUES (?, ?, ?, ?, ?)
       `, [wip_code, wip_name, memo || null, informart_url || null, tenantId]);
@@ -96,10 +95,10 @@ export async function POST(request: Request) {
         for (const ing of ingredients) {
           let nameToInsert = ing.ingredient_name;
           if (!nameToInsert) {
-            const masterIng = await db.get('SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', [ing.ingredient_code]);
+            const masterIng = await txDb.get(tenantId ? 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ? AND (tenant_id = ? OR tenant_id IS NULL)' : 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', tenantId ? [ing.ingredient_code, tenantId] : [ing.ingredient_code]);
             nameToInsert = masterIng ? masterIng.ingredient_name : '不明な材料';
           }
-          await db.run(`
+          await txDb.run(`
             INSERT INTO wip_ingredients (wip_code, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
             VALUES (?, ?, ?, ?, ?)
           `, [wip_code, ing.ingredient_code, nameToInsert, ing.ingredient_amount, tenantId]);
@@ -109,19 +108,19 @@ export async function POST(request: Request) {
       // 3. ingredients にも仕掛品を材料として登録・更新する（type='wip'）
       let existingIng;
       if (tenantId) {
-        existingIng = await db.get('SELECT * FROM ingredients WHERE ingredient_code = ? AND tenant_id = ?', [wip_code, tenantId]);
+        existingIng = await txDb.get('SELECT * FROM ingredients WHERE ingredient_code = ? AND tenant_id = ?', [wip_code, tenantId]);
       } else {
-        existingIng = await db.get('SELECT * FROM ingredients WHERE ingredient_code = ?', [wip_code]);
+        existingIng = await txDb.get('SELECT * FROM ingredients WHERE ingredient_code = ?', [wip_code]);
       }
       
       if (existingIng) {
         if (tenantId) {
-          await db.run(`UPDATE ingredients SET ingredient_name = ?, type = 'wip' WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
+          await txDb.run(`UPDATE ingredients SET ingredient_name = ?, type = 'wip' WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
         } else {
-          await db.run(`UPDATE ingredients SET ingredient_name = ?, type = 'wip' WHERE ingredient_code = ?`, [wip_name, wip_code]);
+          await txDb.run(`UPDATE ingredients SET ingredient_name = ?, type = 'wip' WHERE ingredient_code = ?`, [wip_name, wip_code]);
         }
       } else {
-        await db.run(`
+        await txDb.run(`
           INSERT INTO ingredients (ingredient_code, ingredient_name, type, status, tenant_id)
           VALUES (?, ?, 'wip', 'active', ?)
         `, [wip_code, wip_name, tenantId]);
@@ -129,19 +128,16 @@ export async function POST(request: Request) {
 
       // 4. 他の関連テーブル（生地や商品構成）の名前も連動更新
       if (tenantId) {
-        await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
-        await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
+        await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
+        await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ? AND tenant_id = ?`, [wip_name, wip_code, tenantId]);
       } else {
-        await db.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [wip_name, wip_code]);
-        await db.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [wip_name, wip_code]);
+        await txDb.run(`UPDATE doughs SET ingredient_name = ? WHERE ingredient_code = ?`, [wip_name, wip_code]);
+        await txDb.run(`UPDATE product_ingredients SET ingredient_name = ? WHERE ingredient_code = ?`, [wip_name, wip_code]);
       }
 
-      await db.run('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (txError) {
-      await db.run('ROLLBACK');
-      throw txError;
-    }
+      });
+    return NextResponse.json({ success: true });
+    
   } catch (error: any) {
     console.error('Failed to save wip:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました: ' + (error.message || String(error)) }, { status: 500 });

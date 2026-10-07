@@ -107,16 +107,15 @@ export async function POST(request: Request) {
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
     const db = await getDb();
 
-    await db.run('BEGIN TRANSACTION');
-    try {
+    await db.transaction(async (txDb) => {
       if (tenantId) {
-        await db.run('DELETE FROM doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
-        await db.run('DELETE FROM sub_doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
-        await db.run('DELETE FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
+        await txDb.run('DELETE FROM doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
+        await txDb.run('DELETE FROM sub_doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
+        await txDb.run('DELETE FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
       } else {
-        await db.run('DELETE FROM doughs WHERE dough_id = ?', [dough_id]);
-        await db.run('DELETE FROM sub_doughs WHERE dough_id = ?', [dough_id]);
-        await db.run('DELETE FROM sub_dough_ingredients WHERE dough_id = ?', [dough_id]);
+        await txDb.run('DELETE FROM doughs WHERE dough_id = ?', [dough_id]);
+        await txDb.run('DELETE FROM sub_doughs WHERE dough_id = ?', [dough_id]);
+        await txDb.run('DELETE FROM sub_dough_ingredients WHERE dough_id = ?', [dough_id]);
       }
 
       if (type === 'standard') {
@@ -126,10 +125,10 @@ export async function POST(request: Request) {
         for (const ing of ingredients) {
           let nameToInsert = ing.ingredient_name;
           if (!nameToInsert) {
-            const masterIng = await db.get('SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', [ing.ingredient_code]);
+            const masterIng = await txDb.get(tenantId ? 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ? AND (tenant_id = ? OR tenant_id IS NULL)' : 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', tenantId ? [ing.ingredient_code, tenantId] : [ing.ingredient_code]);
             nameToInsert = masterIng ? masterIng.ingredient_name : '不明な材料';
           }
-          await db.run(`
+          await txDb.run(`
             INSERT INTO doughs (dough_id, dough_name, ingredient_code, ingredient_name, bakers_percent, memo, informart_url, tenant_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `, [dough_id, dough_name, ing.ingredient_code, nameToInsert, ing.bakers_percent, memo || null, informart_url || null, tenantId]);
@@ -138,7 +137,7 @@ export async function POST(request: Request) {
         if (!base_dough_id || !base_dough_amount) {
           throw new Error('サブ生地にはベース生地と基準グラム数が必要です');
         }
-        await db.run(`
+        await txDb.run(`
           INSERT INTO sub_doughs (dough_id, dough_name, base_dough_id, base_dough_name, base_dough_amount, memo, informart_url, tenant_id)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [dough_id, dough_name, base_dough_id, base_dough_name || '', base_dough_amount, memo || null, informart_url || null, tenantId]);
@@ -147,10 +146,10 @@ export async function POST(request: Request) {
           for (const ing of ingredients) {
             let nameToInsert = ing.ingredient_name;
             if (!nameToInsert) {
-              const masterIng = await db.get('SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', [ing.ingredient_code]);
+              const masterIng = await txDb.get(tenantId ? 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ? AND (tenant_id = ? OR tenant_id IS NULL)' : 'SELECT ingredient_name FROM ingredients WHERE ingredient_code = ?', tenantId ? [ing.ingredient_code, tenantId] : [ing.ingredient_code]);
               nameToInsert = masterIng ? masterIng.ingredient_name : '不明な材料';
             }
-            await db.run(`
+            await txDb.run(`
               INSERT INTO sub_dough_ingredients (dough_id, ingredient_code, ingredient_name, ingredient_amount, tenant_id)
               VALUES (?, ?, ?, ?, ?)
             `, [dough_id, ing.ingredient_code, nameToInsert, ing.ingredient_amount, tenantId]);
@@ -159,17 +158,14 @@ export async function POST(request: Request) {
       }
 
       if (tenantId) {
-        await db.run(`UPDATE product_doughs SET dough_name = ? WHERE dough_code = ? AND tenant_id = ?`, [dough_name, dough_id, tenantId]);
+        await txDb.run(`UPDATE product_doughs SET dough_name = ? WHERE dough_code = ? AND tenant_id = ?`, [dough_name, dough_id, tenantId]);
       } else {
-        await db.run(`UPDATE product_doughs SET dough_name = ? WHERE dough_code = ?`, [dough_name, dough_id]);
+        await txDb.run(`UPDATE product_doughs SET dough_name = ? WHERE dough_code = ?`, [dough_name, dough_id]);
       }
 
-      await db.run('COMMIT');
-      return NextResponse.json({ success: true });
-    } catch (txError) {
-      await db.run('ROLLBACK');
-      throw txError;
-    }
+      });
+    return NextResponse.json({ success: true });
+    
   } catch (error) {
     console.error('Failed to save dough:', error);
     return NextResponse.json({ error: 'データの保存に失敗しました' }, { status: 500 });

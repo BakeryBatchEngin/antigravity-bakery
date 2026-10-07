@@ -59,32 +59,31 @@ export async function POST(request: Request) {
     });
 
     let rowCount = 0;
-    await db.run('BEGIN TRANSACTION');
 
     try {
-      for (const [dough_id, data] of Array.from(doughsMap.entries())) {
-        // 部分更新のため、Excelに存在する生地IDについてのみ一度削除して再挿入する
-        if (tenantId) {
-          await db.run('DELETE FROM doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
-        } else {
-          await db.run('DELETE FROM doughs WHERE dough_id = ?', [dough_id]);
-        }
+      await db.transaction(async (txDb) => {
+        for (const [dough_id, data] of Array.from(doughsMap.entries())) {
+          // 部分更新のため、Excelに存在する生地IDについてのみ一度削除して再挿入する
+          if (tenantId) {
+            await txDb.run('DELETE FROM doughs WHERE dough_id = ? AND tenant_id = ?', [dough_id, tenantId]);
+          } else {
+            await txDb.run('DELETE FROM doughs WHERE dough_id = ?', [dough_id]);
+          }
 
-        for (const ing of data.ingredients) {
-          await db.run(`
-            INSERT INTO doughs (dough_id, dough_name, ingredient_code, ingredient_name, bakers_percent, tenant_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `, [
-            dough_id, data.dough_name, ing.ingredient_code, ing.ingredient_name, ing.bakers_percent, tenantId
-          ]);
-          rowCount++;
+          for (const ing of data.ingredients) {
+            await txDb.run(`
+              INSERT INTO doughs (dough_id, dough_name, ingredient_code, ingredient_name, bakers_percent, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [
+              dough_id, data.dough_name, ing.ingredient_code, ing.ingredient_name, ing.bakers_percent, tenantId
+            ]);
+            rowCount++;
+          }
         }
-      }
-
-      await db.run('COMMIT');
+      });
+      
       return NextResponse.json({ success: true, count: doughsMap.size });
     } catch (e) {
-      await db.run('ROLLBACK');
       console.error('Database Error during import:', e);
       throw e;
     }
