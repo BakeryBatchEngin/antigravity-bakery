@@ -104,7 +104,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 3.44</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 4.01</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -132,8 +132,26 @@ export default function NavigationHeader() {
               </div>
             )}
 
-            {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin は別の場所で管理）===== */}
-            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && (
+            {/* ===== 企業ロス統括管理者専用：自社の店舗を切り替えるセレクト（スマホでも表示） ===== */}
+            {role === 'company_loss_manager' && stores.length > 0 && (
+              <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-2 sm:px-3 py-1.5">
+                <span className="text-xs font-bold text-emerald-700 mr-1 sm:mr-2">🏪 店舗:</span>
+                <select
+                  value={String(activeStoreId ?? '')}
+                  onChange={handleStoreChange}
+                  className="bg-transparent text-xs sm:text-sm font-bold text-emerald-900 outline-none cursor-pointer max-w-[7.5rem] sm:max-w-none"
+                >
+                  {stores.map(store => (
+                    <option key={store.id} value={store.id}>
+                      {store.store_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin/企業ロス統括管理者は別の場所で管理）===== */}
+            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && role !== 'company_loss_manager' && (
               <div className="hidden sm:flex items-center bg-slate-100 rounded-lg px-3 py-1.5 border border-slate-200">
                 <span className="text-xs font-bold text-slate-500 mr-2">📍 店舗:</span>
                 {(user.storeIds && user.storeIds.length > 1) ? (

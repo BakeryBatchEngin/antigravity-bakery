@@ -72,11 +72,11 @@ export default function LoginPage() {
         
         {/* ロゴ・タイトル部分 */}
         <div className="text-center mb-8">
-          <h1 className={`text-4xl font-extrabold ${textClass} tracking-tight`}>
-            Bakery Batch Engine
+          <h1 className={`text-3xl sm:text-4xl font-extrabold ${textClass} tracking-tight leading-tight`}>
+            Bakery Engine for Batch and Loss Management
           </h1>
           <p className={`mt-3 font-medium text-lg ${subtitleClass}`}>
-            ベーカリー仕込み支援エンジン
+            仕込み支援・ロス管理 ベーカリーツール
           </p>
         </div>
 
@@ -146,7 +146,7 @@ export default function LoginPage() {
         {/* バージョン表示 */}
         <div className="text-center mt-10">
           <p className="text-slate-500 text-sm font-medium">
-            Ver. 3.44
+            Ver. 4.01
           </p>
         </div>
 

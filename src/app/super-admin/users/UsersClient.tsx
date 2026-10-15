@@ -3,11 +3,13 @@
 import { useState } from 'react';
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
-  super_admin: { label: 'システム管理者', color: 'bg-purple-100 text-purple-700' },
-  admin:       { label: '管理者',         color: 'bg-indigo-100 text-indigo-700' },
-  master:      { label: 'マスター',       color: 'bg-blue-100 text-blue-700' },
-  manager:     { label: 'マネージャー',   color: 'bg-cyan-100 text-cyan-700' },
-  chef:        { label: 'シェフ',         color: 'bg-emerald-100 text-emerald-700' },
+  super_admin:   { label: 'システム管理者', color: 'bg-purple-100 text-purple-700' },
+  admin:         { label: '管理者',         color: 'bg-indigo-100 text-indigo-700' },
+  master:        { label: 'マスター',       color: 'bg-blue-100 text-blue-700' },
+  manager:       { label: 'マネージャー',   color: 'bg-cyan-100 text-cyan-700' },
+  company_loss_manager: { label: '企業ロス統括管理者', color: 'bg-rose-100 text-rose-700' },
+  store_loss_manager: { label: '店舗ロス管理者',   color: 'bg-orange-100 text-orange-700' },
+  chef:          { label: 'シェフ',         color: 'bg-emerald-100 text-emerald-700' },
 };
 
 type User = {

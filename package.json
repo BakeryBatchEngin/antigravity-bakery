@@ -11,6 +11,7 @@
     "db:sync": "tsx scripts/sync-db.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/sqlite3": "^3.1.11",
     "bcryptjs": "^3.0.3",

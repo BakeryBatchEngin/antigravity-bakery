@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ManagerDashboardPage from "./manager/dashboard/page";
 import StatusCalendar from "@/components/StatusCalendar";
-
+import { Loader2 } from "lucide-react";
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeStoreId, setActiveStoreId] = useState<number | 'manager' | null>(null);
@@ -40,6 +40,42 @@ export default function Home() {
     window.addEventListener('roleChange', fetchUser);
     return () => window.removeEventListener('roleChange', fetchUser);
   }, [router]);
+
+  const [isImporting, setIsImporting] = useState(false);
+  const excelInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/orders/import-weekly', {
+        method: 'POST',
+        body: formData
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        alert(`${resData.error || '保存に失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
+        return;
+      }
+
+      alert(`オーダー表から1週間分（${resData.ordersCount}件の発注、${resData.productsCount}件の商品）を読み込みました！`);
+
+    } catch (err: any) {
+      console.error(err);
+      alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || '不明'}`);
+    } finally {
+      setIsImporting(false);
+      if (excelInputRef.current) {
+        excelInputRef.current.value = '';
+      }
+    }
+  };
 
   if (loading) {
     return <LoadingSpinner fullScreen={true} />;
@@ -137,6 +173,53 @@ export default function Home() {
               <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Usage Forecast</h3>
               <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">複数日の原材料使用量予測</p>
             </Link>
+          </div>
+        </>
+      )}
+
+      {/* ===== 店舗ロス管理者・企業ロス統括管理者向けメニュー ===== */}
+      {(role === 'store_loss_manager' || role === 'company_loss_manager') && (
+        <>
+          <div className="text-center mb-4">
+            <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">
+              Welcome, {user.displayName}
+            </h2>
+            <p className="text-slate-500 mt-2">
+              Role: <span className="uppercase font-bold">{role}</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mt-4">
+            <Link 
+              href="/store-manager/waste" 
+              className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-blue-500 transition-all group"
+            >
+              <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">📸</span>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ロスパン登録 (AI)</h3>
+              <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">カメラで棚を撮影してロスをカウント</p>
+            </Link>
+            
+            <div className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-emerald-500 transition-all group cursor-pointer" onClick={() => !isImporting && excelInputRef.current?.click()}>
+              <input 
+                type="file"
+                accept=".xlsx, .xls"
+                ref={excelInputRef}
+                className="hidden"
+                onChange={handleExcelUpload}
+              />
+              {isImporting ? (
+                <>
+                  <Loader2 className="w-12 h-12 mb-4 animate-spin text-emerald-500" />
+                  <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">読込中...</h3>
+                </>
+              ) : (
+                <>
+                  <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">📥</span>
+                  <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">オーダー表 一括読込</h3>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">1週間分の商品マスタ・発注データを登録</p>
+                </>
+              )}
+            </div>
           </div>
         </>
       )}

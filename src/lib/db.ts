@@ -425,7 +425,7 @@ export async function initDb() {
       id           SERIAL PRIMARY KEY,
       tenant_id    INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
       username     TEXT UNIQUE NOT NULL,
-      role         TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef')),
+      role         TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef', 'store_loss_manager', 'company_loss_manager')),
       pin_code     TEXT,
       password     TEXT,
       display_name TEXT NOT NULL,
@@ -438,6 +438,34 @@ export async function initDb() {
       user_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
       PRIMARY KEY (user_id, store_id)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS waste_records (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+      target_date TEXT NOT NULL,
+      product_code TEXT NOT NULL,
+      product_name TEXT,
+      order_quantity INTEGER DEFAULT 0,
+      waste_count INTEGER DEFAULT 0,
+      sold_out_time TEXT,
+      comment TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(store_id, target_date, product_code)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS waste_photo_logs (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+      target_date TEXT NOT NULL,
+      image_base64 TEXT NOT NULL,
+      results_json TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 

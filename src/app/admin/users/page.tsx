@@ -293,7 +293,9 @@ export default function UsersAdminPage() {
                   onChange={e => setFormData({...formData, role: e.target.value})}
                 >
                   <option value="chef">Chef (店舗スタッフ / 仕込み担当)</option>
+                  <option value="store_loss_manager">Store Loss Manager (店舗ロス管理者 / 店舗担当)</option>
                   <option value="manager">Manager (エリアマネージャー / 複数店舗管理)</option>
+                  <option value="company_loss_manager">Company Loss Manager (企業ロス統括管理者 / 全店アクセス)</option>
                   <option value="master">Master (商品・マスタデータ管理者)</option>
                   <option value="admin">Admin (システム管理者)</option>
                 </select>
@@ -323,7 +325,7 @@ export default function UsersAdminPage() {
                 </div>
               </div>
 
-              {(formData.role === 'chef' || formData.role === 'manager') && (
+              {(formData.role === 'chef' || formData.role === 'manager' || formData.role === 'store_loss_manager') && (
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-3">
                     担当店舗 <span className="text-xs text-slate-500 font-normal ml-2">※複数選択可</span>
