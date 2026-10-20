@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDb();
-    
+
     // 操作対象の店舗を決定（店舗ロス管理者は自店舗のみ。統括管理者はヘッダーで選択した自社の店舗）
     const resolved = await resolveLossStoreId(db, user);
     if (resolved.error) {
@@ -53,16 +53,38 @@ export async function POST(req: Request) {
         }
       }
 
-      // 学習データとして画像を保存 (任意)
+      // 学習データとして画像と確定した正解カウントを保存
       if (imageBase64) {
-        // 結果JSONにはロスの数だけを入れるか、現在のレコード状態を入れる
+        // AIのFew-shot学習精度を高めるため product_code, product_name, count をセットで記録
         const resultsJson = JSON.stringify(
-          records.filter((r: any) => r.wasteCount > 0).map((r: any) => ({ product_code: r.productCode, count: r.wasteCount }))
+          records
+            .filter((r: any) => r.wasteCount > 0)
+            .map((r: any) => ({
+              product_code: r.productCode,
+              product_name: r.productName,
+              count: r.wasteCount,
+            }))
         );
-        await txDb.run(
-          `INSERT INTO waste_photo_logs (store_id, target_date, image_base64, results_json) VALUES (?, ?, ?, ?)`,
-          [effectiveStoreId, targetDate, imageBase64, resultsJson]
+
+        // 同じ店舗・同じ日付の学習ログが既にあれば上書き更新し、過去3件の枠が同日の再保存で埋まるのを防ぐ
+        const existingPhotoLog = await txDb.get(
+          `SELECT id FROM waste_photo_logs WHERE store_id = ? AND target_date = ? ORDER BY id DESC LIMIT 1`,
+          [effectiveStoreId, targetDate]
         );
+
+        if (existingPhotoLog) {
+          await txDb.run(
+            `UPDATE waste_photo_logs
+             SET image_base64 = ?, results_json = ?, created_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [imageBase64, resultsJson, existingPhotoLog.id]
+          );
+        } else {
+          await txDb.run(
+            `INSERT INTO waste_photo_logs (store_id, target_date, image_base64, results_json) VALUES (?, ?, ?, ?)`,
+            [effectiveStoreId, targetDate, imageBase64, resultsJson]
+          );
+        }
       }
     });
 

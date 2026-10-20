@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Save, Loader2, AlertCircle, MessageSquare, X } from 'lucide-react';
+import { Camera, Save, Loader2, AlertCircle, MessageSquare, X, PlusCircle, RefreshCw, Sparkles } from 'lucide-react';
 
 interface Product {
   product_code: string;
@@ -15,6 +15,12 @@ interface WasteRecord {
   wasteCount: number;
   soldOutTime: string;
   comment?: string;
+}
+
+interface AiDetectedItem {
+  product_code: string;
+  product_name: string;
+  count: number;
 }
 
 // 押しっぱなし（長押し）で連続実行するボタン
@@ -81,6 +87,10 @@ export default function WasteCountPage() {
   });
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [captureMode, setCaptureMode] = useState<'overwrite' | 'add'>('overwrite');
+  const [aiDetectedCodes, setAiDetectedCodes] = useState<Set<string>>(new Set());
+  const [lastAiDetections, setLastAiDetections] = useState<AiDetectedItem[]>([]);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -92,6 +102,12 @@ export default function WasteCountPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // 日付変更時はプレビューやAI検出バッジをクリア
+    setImagePreview(null);
+    setAiDetectedCodes(new Set());
+    setLastAiDetections([]);
+    setMessage(null);
+
     const fetchTargets = async () => {
       try {
         const res = await fetch(`/api/waste/targets?date=${targetDate}`);
@@ -112,7 +128,16 @@ export default function WasteCountPage() {
     fetchTargets();
   }, [targetDate]);
 
-  // 画像選択＆AI解析
+  // カメラ起動トリガー（上書きモード or 追加合算モード）
+  const triggerCamera = (mode: 'overwrite' | 'add') => {
+    setCaptureMode(mode);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  // 画像選択＆AI解析（1024px・品質0.75で高速送信＆認識を両立）
   const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -123,7 +148,7 @@ export default function WasteCountPage() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
+        const MAX_WIDTH = 1024;
         let width = img.width;
         let height = img.height;
 
@@ -137,16 +162,16 @@ export default function WasteCountPage() {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
 
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
         setImagePreview(compressedBase64);
-        analyzeImage(compressedBase64);
+        analyzeImage(compressedBase64, captureMode);
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
 
-  const analyzeImage = async (base64Data: string) => {
+  const analyzeImage = async (base64Data: string, mode: 'overwrite' | 'add') => {
     setIsAnalyzing(true);
     try {
       const res = await fetch('/api/vision/count-waste', {
@@ -161,17 +186,37 @@ export default function WasteCountPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '解析に失敗しました');
 
-      const aiResults: { product_code: string; count: number }[] = data.result;
+      const aiResults: AiDetectedItem[] = data.result || [];
+      setLastAiDetections(aiResults);
+
+      if (aiResults.length === 0) {
+        setMessage({
+          type: 'error',
+          text: '写真から対象リストのパンを認識できませんでした。もう少し棚に近づいて撮影するか、手動で入力してください。'
+        });
+        return;
+      }
+
+      const detectedSet = new Set<string>(mode === 'add' ? Array.from(aiDetectedCodes) : []);
+      aiResults.forEach(item => detectedSet.add(item.product_code));
+      setAiDetectedCodes(detectedSet);
 
       setRecords(prev => prev.map(record => {
         const found = aiResults.find(r => r.product_code === record.productCode);
         if (found) {
-          return { ...record, wasteCount: found.count };
+          const nextCount = mode === 'add' ? record.wasteCount + found.count : found.count;
+          return { ...record, wasteCount: nextCount };
         }
         return record;
       }));
 
-      setMessage({ type: 'success', text: 'AIの解析が完了しました。ロス数が自動入力されました。' });
+      const totalCounted = aiResults.reduce((sum, item) => sum + item.count, 0);
+      setMessage({
+        type: 'success',
+        text: mode === 'add'
+          ? `AIが ${aiResults.length} 種類（計 ${totalCounted} 個）を認識し、現在のロス数に加算しました！`
+          : `AIが ${aiResults.length} 種類（計 ${totalCounted} 個）を認識し、ロス数に自動入力しました！`
+      });
     } catch (error: any) {
       console.error(error);
       setMessage({ type: 'error', text: error.message });
@@ -225,6 +270,12 @@ export default function WasteCountPage() {
 
   // クリアボタン: 完売時間・ロス数・コメントをリセット
   const clearRecord = (index: number) => {
+    const code = records[index]?.productCode;
+    if (code && aiDetectedCodes.has(code)) {
+      const nextSet = new Set(aiDetectedCodes);
+      nextSet.delete(code);
+      setAiDetectedCodes(nextSet);
+    }
     setRecords(prev => {
       const newRecords = [...prev];
       newRecords[index] = {
@@ -304,13 +355,39 @@ export default function WasteCountPage() {
             className="hidden"
             onChange={handleImageCapture}
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow transition-colors text-base"
-          >
-            <Camera className="w-5 h-5" />
-            棚の写真を撮影して自動カウント
-          </button>
+
+          {!imagePreview ? (
+            <button
+              type="button"
+              disabled={isAnalyzing || records.length === 0}
+              onClick={() => triggerCamera('overwrite')}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow transition-colors text-base"
+            >
+              <Camera className="w-5 h-5" />
+              棚の写真を撮影して自動カウント
+            </button>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isAnalyzing}
+                onClick={() => triggerCamera('add')}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow transition-colors text-sm sm:text-base"
+              >
+                <PlusCircle className="w-5 h-5" />
+                別の棚を追加撮影（個数を合算）
+              </button>
+              <button
+                type="button"
+                disabled={isAnalyzing}
+                onClick={() => triggerCamera('overwrite')}
+                className="w-full py-2.5 bg-slate-600 hover:bg-slate-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow transition-colors text-sm sm:text-base"
+              >
+                <RefreshCw className="w-4 h-4" />
+                写真を撮り直す（上書き）
+              </button>
+            </div>
+          )}
 
           {imagePreview && (
             <div className="mt-2 relative rounded-lg overflow-hidden border">
@@ -319,9 +396,34 @@ export default function WasteCountPage() {
               {isAnalyzing && (
                 <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white backdrop-blur-sm">
                   <Loader2 className="w-8 h-8 animate-spin mb-1" />
-                  <p className="font-bold text-sm">AIがパンをカウント中...</p>
+                  <p className="font-bold text-sm">AIがパンと値札を解析・カウント中...</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 今回の撮影でAIが検出した商品のサマリー */}
+          {lastAiDetections.length > 0 && !isAnalyzing && (
+            <div className="bg-blue-50/80 border border-blue-200 rounded-lg p-2.5 text-left">
+              <div className="flex items-center gap-1 text-xs font-bold text-blue-800 mb-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>直近の写真からAIが検出したパン:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {lastAiDetections.map(item => {
+                  const matchedProduct = records.find(r => r.productCode === item.product_code);
+                  const displayName = matchedProduct?.productName || item.product_name || item.product_code;
+                  return (
+                    <span
+                      key={item.product_code}
+                      className="inline-flex items-center gap-1 bg-white border border-blue-200 text-blue-900 text-xs font-bold px-2 py-0.5 rounded-full shadow-2xs"
+                    >
+                      <span>{displayName}</span>
+                      <span className="text-blue-600 font-black">{item.count}個</span>
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -342,130 +444,142 @@ export default function WasteCountPage() {
             </div>
           )}
 
-          {records.map((record, idx) => (
-            <div
-              key={record.productCode}
-              className="border-2 border-emerald-600 rounded-2xl bg-white shadow-sm p-3 transition-all hover:shadow"
-            >
-              {/* 上段（1行目）: 商品名 ＆ 発注数 */}
-              <div className="flex items-baseline justify-between gap-2 border-b border-gray-100 pb-1.5 mb-2">
-                <span className="text-base sm:text-lg font-bold text-gray-900 leading-snug">
-                  {record.productName}
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-gray-600 whitespace-nowrap flex-shrink-0">
-                  発注数
-                  <span className="text-2xl sm:text-3xl font-black text-gray-950 mx-1 tabular-nums">
-                    {record.orderQuantity}
+          {records.map((record, idx) => {
+            const isAiCounted = aiDetectedCodes.has(record.productCode);
+            return (
+              <div
+                key={record.productCode}
+                className={`border-2 rounded-2xl bg-white shadow-sm p-3 transition-all hover:shadow ${
+                  isAiCounted ? 'border-blue-500 ring-2 ring-blue-100' : 'border-emerald-600'
+                }`}
+              >
+                {/* 上段（1行目）: 商品名 ＆ 発注数 */}
+                <div className="flex items-baseline justify-between gap-2 border-b border-gray-100 pb-1.5 mb-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-base sm:text-lg font-bold text-gray-900 leading-snug">
+                      {record.productName}
+                    </span>
+                    {isAiCounted && (
+                      <span className="inline-flex items-center gap-0.5 bg-blue-100 text-blue-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        ✨AI認識
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs sm:text-sm font-semibold text-gray-600 whitespace-nowrap flex-shrink-0">
+                    発注数
+                    <span className="text-2xl sm:text-3xl font-black text-gray-950 mx-1 tabular-nums">
+                      {record.orderQuantity}
+                    </span>
+                    個
                   </span>
-                  個
-                </span>
-              </div>
+                </div>
 
-              {/* 下段（2行目）: 操作系（完売時間・ロス数・ボタン群） */}
-              <div className="flex items-center justify-between gap-1.5 sm:gap-2">
-                {/* 完売時間ブロック */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setSoldOutNow(idx)}
-                    className="px-2.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-xs sm:text-sm font-extrabold shadow-sm flex items-center gap-1 whitespace-nowrap transition-colors"
-                    title="現在の時刻を完売時間にセット"
-                  >
-                    <span className="text-xs">⏰</span>
-                    <span>今！</span>
-                  </button>
+                {/* 下段（2行目）: 操作系（完売時間・ロス数・ボタン群） */}
+                <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                  {/* 完売時間ブロック */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSoldOutNow(idx)}
+                      className="px-2.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-xs sm:text-sm font-extrabold shadow-sm flex items-center gap-1 whitespace-nowrap transition-colors"
+                      title="現在の時刻を完売時間にセット"
+                    >
+                      <span className="text-xs">⏰</span>
+                      <span>今！</span>
+                    </button>
 
-                  {/* 完売時間表示 ＋ 上下ステッパー */}
-                  <div className="flex items-center bg-orange-50 border border-orange-200 rounded-lg px-2 py-0.5">
-                    <div className="text-center mr-1.5">
-                      <div className="text-[9px] text-orange-800 font-semibold leading-none">完売時間</div>
-                      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums leading-tight">
-                        {record.soldOutTime || '--:--'}
+                    {/* 完売時間表示 ＋ 上下ステッパー */}
+                    <div className="flex items-center bg-orange-50 border border-orange-200 rounded-lg px-2 py-0.5">
+                      <div className="text-center mr-1.5">
+                        <div className="text-[9px] text-orange-800 font-semibold leading-none">完売時間</div>
+                        <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums leading-tight">
+                          {record.soldOutTime || '--:--'}
+                        </div>
+                      </div>
+                      <div className="flex flex-col border-l border-orange-200 pl-1 -my-0.5">
+                        <RepeatButton
+                          onAction={() => adjustSoldOutTime(idx, 5)}
+                          className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-orange-100 rounded leading-none"
+                          ariaLabel="完売時間を5分進める"
+                        >
+                          +
+                        </RepeatButton>
+                        <RepeatButton
+                          onAction={() => adjustSoldOutTime(idx, -5)}
+                          className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-orange-100 rounded leading-none"
+                          ariaLabel="完売時間を5分戻す"
+                        >
+                          -
+                        </RepeatButton>
                       </div>
                     </div>
-                    <div className="flex flex-col border-l border-orange-200 pl-1 -my-0.5">
+                  </div>
+
+                  {/* ロス数ブロック */}
+                  <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
+                    <span className="text-[10px] sm:text-xs text-blue-900 font-bold leading-none">ロス数</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={record.wasteCount}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        handleRecordChange(idx, 'wasteCount', val === '' ? 0 : parseInt(val, 10));
+                      }}
+                      className="w-10 sm:w-12 text-center text-2xl font-black bg-transparent border-none p-0 focus:outline-none text-gray-900 tabular-nums"
+                    />
+                    <span className="text-xs font-semibold text-gray-600 mr-1">個</span>
+                    <div className="flex flex-col border-l border-gray-300 pl-1 -my-0.5">
                       <RepeatButton
-                        onAction={() => adjustSoldOutTime(idx, 5)}
-                        className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-orange-100 rounded leading-none"
-                        ariaLabel="完売時間を5分進める"
+                        onAction={() => handleRecordChange(idx, 'wasteCount', record.wasteCount + 1)}
+                        className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-gray-200 rounded leading-none"
+                        ariaLabel="ロス数を1増やす"
                       >
                         +
                       </RepeatButton>
                       <RepeatButton
-                        onAction={() => adjustSoldOutTime(idx, -5)}
-                        className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-orange-100 rounded leading-none"
-                        ariaLabel="完売時間を5分戻す"
+                        onAction={() => handleRecordChange(idx, 'wasteCount', Math.max(0, record.wasteCount - 1))}
+                        className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-gray-200 rounded leading-none"
+                        ariaLabel="ロス数を1減らす"
                       >
                         -
                       </RepeatButton>
                     </div>
                   </div>
-                </div>
 
-                {/* ロス数ブロック */}
-                <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
-                  <span className="text-[10px] sm:text-xs text-blue-900 font-bold leading-none">ロス数</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={record.wasteCount}
-                    onChange={e => {
-                      const val = e.target.value.replace(/[^0-9]/g, '');
-                      handleRecordChange(idx, 'wasteCount', val === '' ? 0 : parseInt(val, 10));
-                    }}
-                    className="w-10 sm:w-12 text-center text-2xl font-black bg-transparent border-none p-0 focus:outline-none text-gray-900 tabular-nums"
-                  />
-                  <span className="text-xs font-semibold text-gray-600 mr-1">個</span>
-                  <div className="flex flex-col border-l border-gray-300 pl-1 -my-0.5">
-                    <RepeatButton
-                      onAction={() => handleRecordChange(idx, 'wasteCount', record.wasteCount + 1)}
-                      className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-gray-200 rounded leading-none"
-                      ariaLabel="ロス数を1増やす"
+                  {/* コメント・クリアボタン（上下2段） */}
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openCommentModal(idx)}
+                      className={`px-3 py-1 text-xs font-bold rounded shadow-sm text-white transition-colors flex items-center justify-center gap-0.5 ${
+                        record.comment ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700'
+                      }`}
                     >
-                      +
-                    </RepeatButton>
-                    <RepeatButton
-                      onAction={() => handleRecordChange(idx, 'wasteCount', Math.max(0, record.wasteCount - 1))}
-                      className="w-5 h-4 flex items-center justify-center text-xs font-bold text-blue-600 hover:bg-gray-200 rounded leading-none"
-                      ariaLabel="ロス数を1減らす"
+                      {record.comment && <span className="text-[10px]">✓</span>}
+                      <span>コメント</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => clearRecord(idx)}
+                      className="px-3 py-1 text-xs font-bold rounded shadow-sm bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white transition-colors"
                     >
-                      -
-                    </RepeatButton>
+                      クリア
+                    </button>
                   </div>
                 </div>
 
-                {/* コメント・クリアボタン（上下2段） */}
-                <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() => openCommentModal(idx)}
-                    className={`px-3 py-1 text-xs font-bold rounded shadow-sm text-white transition-colors flex items-center justify-center gap-0.5 ${
-                      record.comment ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700'
-                    }`}
-                  >
-                    {record.comment && <span className="text-[10px]">✓</span>}
-                    <span>コメント</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => clearRecord(idx)}
-                    className="px-3 py-1 text-xs font-bold rounded shadow-sm bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white transition-colors"
-                  >
-                    クリア
-                  </button>
-                </div>
+                {/* メモ・コメントが既に記入されている場合は下部に小さく表示 */}
+                {record.comment && (
+                  <div className="mt-1.5 pt-1 border-t border-gray-100 flex items-start gap-1.5 text-xs text-gray-600">
+                    <MessageSquare className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                    <span className="font-medium truncate">{record.comment}</span>
+                  </div>
+                )}
               </div>
-
-              {/* メモ・コメントが既に記入されている場合は下部に小さく表示 */}
-              {record.comment && (
-                <div className="mt-1.5 pt-1 border-t border-gray-100 flex items-start gap-1.5 text-xs text-gray-600">
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                  <span className="font-medium truncate">{record.comment}</span>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
