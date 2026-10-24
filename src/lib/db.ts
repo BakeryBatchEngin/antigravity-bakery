@@ -442,6 +442,35 @@ export async function initDb() {
   `);
 
   await database.exec(`
+    CREATE TABLE IF NOT EXISTS store_products (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      product_code TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      retail_price INTEGER DEFAULT 0,
+      category TEXT DEFAULT '',
+      characteristics TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (tenant_id, product_code),
+      UNIQUE (tenant_id, product_name)
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS store_sales_orders (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      order_date TEXT NOT NULL,
+      product_code TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (store_id, order_date, product_code)
+    );
+  `);
+
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS waste_records (
       id SERIAL PRIMARY KEY,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,

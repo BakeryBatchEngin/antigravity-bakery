@@ -64,7 +64,13 @@ export default function Home() {
         return;
       }
 
-      alert(`オーダー表から1週間分（${resData.ordersCount}件の発注、${resData.productsCount}件の商品）を読み込みました！`);
+      const skippedInfo =
+        resData.skippedProductsCount > 0
+          ? `\n（※販売商品マスタに未登録のためスキップされた商品: ${resData.skippedProductsCount}品目）`
+          : '';
+      alert(
+        `オーダー表から1週間分（販売商品マスタ一致: ${resData.productsCount}品目 / 計${resData.ordersCount}件の発注）を読み込みました！${skippedInfo}`
+      );
 
     } catch (err: any) {
       console.error(err);
@@ -189,7 +195,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mt-4">
+          <div className={`grid grid-cols-1 ${role === 'company_loss_manager' ? 'md:grid-cols-3 max-w-6xl' : 'md:grid-cols-2 max-w-4xl'} gap-6 w-full mt-4`}>
             <Link 
               href="/store-manager/waste" 
               className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-blue-500 transition-all group"
@@ -216,10 +222,21 @@ export default function Home() {
                 <>
                   <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">📥</span>
                   <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">オーダー表 一括読込</h3>
-                  <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">1週間分の商品マスタ・発注データを登録</p>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">販売商品マスタ登録済みの1週間分の発注を取込</p>
                 </>
               )}
             </div>
+
+            {role === 'company_loss_manager' && (
+              <Link
+                href="/store-manager/products"
+                className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-rose-500 transition-all group"
+              >
+                <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">🏷️</span>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">販売商品マスタ設定</h3>
+                <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">商品コード・価格・カテゴリー・特性の管理</p>
+              </Link>
+            )}
           </div>
         </>
       )}

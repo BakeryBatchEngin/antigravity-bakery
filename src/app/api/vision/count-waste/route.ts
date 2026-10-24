@@ -68,8 +68,31 @@ export async function POST(req: Request) {
 
     const { mimeType, base64Data } = extractBase64AndMime(imageBase64);
 
+    // 販売商品マスタのカテゴリー・特性情報があれば取得して認識精度を高める
+    const storeRow = await db.get('SELECT tenant_id FROM stores WHERE id = $1', [storeId]);
+    const tenantId = storeRow?.tenant_id || user.tenant_id || null;
+    const masterInfoMap = new Map<string, { category: string; characteristics: string }>();
+    if (tenantId) {
+      const masterRows = await db.all(
+        `SELECT product_code, category, characteristics FROM store_products WHERE tenant_id = $1`,
+        [tenantId]
+      );
+      for (const mr of masterRows) {
+        masterInfoMap.set(mr.product_code, {
+          category: mr.category || '',
+          characteristics: mr.characteristics || '',
+        });
+      }
+    }
+
     const productListText = products
-      .map((p: any) => `- "${p.product_code}": ${p.product_name}`)
+      .map((p: any) => {
+        const info = masterInfoMap.get(p.product_code);
+        const extra: string[] = [];
+        if (info?.category) extra.push(`分類:${info.category}`);
+        if (info?.characteristics) extra.push(`特徴:${info.characteristics}`);
+        return `- "${p.product_code}": ${p.product_name}${extra.length > 0 ? ` (${extra.join(' / ')})` : ''}`;
+      })
       .join('\n');
 
     const prompt = `あなたはベーカリー店舗のロス管理スタッフです。
