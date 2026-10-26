@@ -487,6 +487,14 @@ export async function initDb() {
     );
   `);
 
+  // ロス記録に「納品差異」と「試食数」を追加（既に存在する場合は何もしない）
+  try {
+    await database.exec(`ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS delivery_diff INTEGER DEFAULT 0;`);
+    await database.exec(`ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS sample_count INTEGER DEFAULT 0;`);
+  } catch (e) {
+    // カラムが既に存在する場合などは無視
+  }
+
   await database.exec(`
     CREATE TABLE IF NOT EXISTS waste_photo_logs (
       id SERIAL PRIMARY KEY,

@@ -58,7 +58,7 @@ export async function GET(req: Request) {
 
     // 2. すでに登録されているロス記録があれば取得
     const wasteRecords = await db.all(
-      `SELECT product_code, product_name, waste_count, sold_out_time, comment
+      `SELECT product_code, product_name, waste_count, sold_out_time, comment, delivery_diff, sample_count
        FROM waste_records
        WHERE store_id = $1 AND target_date = $2`,
       [storeId, targetDate]
@@ -87,6 +87,8 @@ export async function GET(req: Request) {
         wasteCount: Number(waste?.waste_count || 0),
         soldOutTime: waste?.sold_out_time || '',
         comment: waste?.comment || '',
+        deliveryDiff: Number(waste?.delivery_diff || 0),
+        sampleCount: Number(waste?.sample_count || 0),
         category: master?.category || '',
         characteristics: master?.characteristics || '',
       };

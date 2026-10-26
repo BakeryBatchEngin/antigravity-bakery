@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     await db.transactionWithUser(userId, effectiveStoreId, user.role, async (txDb) => {
       for (const record of records) {
         const { productCode, productName, orderQuantity, wasteCount, soldOutTime, comment } = record;
+        // 納品差異（発注数との差分。マイナス可）と試食数（0以上）
+        const deliveryDiff = Number.isFinite(Number(record.deliveryDiff)) ? Math.trunc(Number(record.deliveryDiff)) : 0;
+        const sampleCount = Math.max(0, Number.isFinite(Number(record.sampleCount)) ? Math.trunc(Number(record.sampleCount)) : 0);
 
         // UPSERT (ON CONFLICT DO UPDATE) は PostgreSQL固有の構文に依存するため、
         // 厳密なルールに従い SELECT してから INSERT or UPDATE を行う
@@ -40,15 +43,15 @@ export async function POST(req: Request) {
         if (existing) {
           await txDb.run(
             `UPDATE waste_records 
-             SET waste_count = ?, sold_out_time = ?, comment = ?, updated_at = CURRENT_TIMESTAMP
+             SET waste_count = ?, sold_out_time = ?, comment = ?, delivery_diff = ?, sample_count = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
-            [wasteCount, soldOutTime || null, comment || null, existing.id]
+            [wasteCount, soldOutTime || null, comment || null, deliveryDiff, sampleCount, existing.id]
           );
         } else {
           await txDb.run(
-            `INSERT INTO waste_records (store_id, target_date, product_code, product_name, order_quantity, waste_count, sold_out_time, comment)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [effectiveStoreId, targetDate, productCode, productName, orderQuantity || 0, wasteCount, soldOutTime || null, comment || null]
+            `INSERT INTO waste_records (store_id, target_date, product_code, product_name, order_quantity, waste_count, sold_out_time, comment, delivery_diff, sample_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [effectiveStoreId, targetDate, productCode, productName, orderQuantity || 0, wasteCount, soldOutTime || null, comment || null, deliveryDiff, sampleCount]
           );
         }
       }

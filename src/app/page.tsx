@@ -44,6 +44,17 @@ export default function Home() {
   const [isImporting, setIsImporting] = useState(false);
   const excelInputRef = React.useRef<HTMLInputElement>(null);
 
+  // 確認用の表（プレビュー）の状態
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<{
+    dates: { date: string; label: string }[];
+    rows: { productCode: string; productName: string; quantities: number[] }[];
+    existingDates: string[];
+    skippedProductsCount: number;
+    warnings: string[];
+  } | null>(null);
+
+  // ファイル選択時: まずDBに書き込まず、内容を解析して確認用の表を表示する
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -52,6 +63,58 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('mode', 'preview');
+
+      const res = await fetch('/api/orders/import-weekly', {
+        method: 'POST',
+        body: formData
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        alert(`${resData.error || '読み込みに失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
+        return;
+      }
+
+      setPendingFile(file);
+      setPreview(resData);
+    } catch (err: any) {
+      console.error(err);
+      alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || '不明'}`);
+    } finally {
+      setIsImporting(false);
+      if (excelInputRef.current) {
+        excelInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 確認用の表を閉じる
+  const closePreview = () => {
+    setPendingFile(null);
+    setPreview(null);
+  };
+
+  // 「登録実行」ボタン: すでにオーダーがある日があれば、確認してから上書き登録する
+  const handleCommitImport = async () => {
+    if (!pendingFile || !preview) return;
+
+    if (preview.existingDates.length > 0) {
+      const labels = preview.dates
+        .filter(d => preview.existingDates.includes(d.date))
+        .map(d => d.label)
+        .join('、');
+      const ok = window.confirm(
+        `次の日付には、すでにオーダーが登録されています。\n\n${labels}\n\n上書きして登録してもよろしいですか？`
+      );
+      if (!ok) return;
+    }
+
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+      formData.append('mode', 'commit');
 
       const res = await fetch('/api/orders/import-weekly', {
         method: 'POST',
@@ -64,22 +127,15 @@ export default function Home() {
         return;
       }
 
-      const skippedInfo =
-        resData.skippedProductsCount > 0
-          ? `\n（※販売商品マスタに未登録のためスキップされた商品: ${resData.skippedProductsCount}品目）`
-          : '';
       alert(
-        `オーダー表から1週間分（販売商品マスタ一致: ${resData.productsCount}品目 / 計${resData.ordersCount}件の発注）を読み込みました！${skippedInfo}`
+        `オーダー表を登録しました！（${resData.datesCount}日分 / 販売商品マスタ一致: ${resData.productsCount}品目 / 計${resData.ordersCount}件の発注）`
       );
-
+      closePreview();
     } catch (err: any) {
       console.error(err);
-      alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || '不明'}`);
+      alert(`登録に失敗しました\n理由: ${err.message || '不明'}`);
     } finally {
       setIsImporting(false);
-      if (excelInputRef.current) {
-        excelInputRef.current.value = '';
-      }
     }
   };
 
@@ -222,7 +278,7 @@ export default function Home() {
                 <>
                   <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">📥</span>
                   <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">オーダー表 一括読込</h3>
-                  <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">販売商品マスタ登録済みの1週間分の発注を取込</p>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">販売商品マスタ登録済みの発注を取込（登録前に内容を確認）</p>
                 </>
               )}
             </div>
@@ -322,6 +378,82 @@ export default function Home() {
             </Link>
           </div>
         </>
+      )}
+
+      {/* ===== オーダー表 取込内容の確認モーダル ===== */}
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">オーダー表の読み込み内容を確認</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                {preview.rows.length}品目 / {preview.dates.length}日分（販売商品マスタに登録済みで、いずれかの日のオーダーが1以上の商品のみ）
+              </p>
+              {preview.existingDates.length > 0 && (
+                <p className="mt-2 text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  ⚠ すでにオーダーが登録されている日があります（
+                  {preview.dates.filter(d => preview.existingDates.includes(d.date)).map(d => d.label).join('、')}
+                  ）。登録実行すると上書きされます。
+                </p>
+              )}
+              {preview.skippedProductsCount > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  ※販売商品マスタに未登録のためスキップした商品: {preview.skippedProductsCount}品目
+                </p>
+              )}
+              {preview.warnings.map((w, i) => (
+                <p key={i} className="mt-2 text-xs text-amber-700">※{w}</p>
+              ))}
+            </div>
+
+            <div className="overflow-auto flex-1 p-4">
+              <table className="w-full text-sm border-collapse">
+                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-700">
+                  <tr>
+                    <th className="border px-2 py-1.5 text-left whitespace-nowrap">商品コード</th>
+                    <th className="border px-2 py-1.5 text-left whitespace-nowrap">商品名</th>
+                    {preview.dates.map(d => (
+                      <th key={d.date} className="border px-2 py-1.5 text-right whitespace-nowrap">
+                        オーダー数量（{d.label}）
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map(r => (
+                    <tr key={r.productCode} className="odd:bg-white even:bg-slate-50 dark:odd:bg-slate-800 dark:even:bg-slate-700/50">
+                      <td className="border px-2 py-1 whitespace-nowrap">{r.productCode}</td>
+                      <td className="border px-2 py-1 whitespace-nowrap">{r.productName}</td>
+                      {r.quantities.map((q, i) => (
+                        <td key={i} className="border px-2 py-1 text-right tabular-nums font-bold">{q > 0 ? q : ''}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closePreview}
+                disabled={isImporting}
+                className="px-5 py-3 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleCommitImport}
+                disabled={isImporting}
+                className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 flex items-center gap-2"
+              >
+                {isImporting && <Loader2 className="w-4 h-4 animate-spin" />}
+                登録実行
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

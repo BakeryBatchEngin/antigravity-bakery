@@ -15,6 +15,8 @@ interface WasteRecord {
   wasteCount: number;
   soldOutTime: string;
   comment?: string;
+  deliveryDiff?: number; // 納品差異（発注数との差分。例: -20）
+  sampleCount?: number; // 試食で使用した数
 }
 
 interface AiDetectedItem {
@@ -282,7 +284,9 @@ export default function WasteCountPage() {
         ...newRecords[index],
         wasteCount: 0,
         soldOutTime: '',
-        comment: ''
+        comment: '',
+        deliveryDiff: 0,
+        sampleCount: 0
       };
       return newRecords;
     });
@@ -477,6 +481,31 @@ export default function WasteCountPage() {
                       個
                     </span>
 
+                    {/* 納品差異バッジ（差分があるときだけ「納品数-20」のように表示） */}
+                    {(record.deliveryDiff || 0) !== 0 && (
+                      <span className="text-xs sm:text-sm font-black px-2 py-0.5 rounded-lg bg-red-100 text-red-700 border border-red-300 whitespace-nowrap tabular-nums">
+                        納品数{(record.deliveryDiff || 0) > 0 ? '+' : ''}{record.deliveryDiff}
+                      </span>
+                    )}
+
+                    {/* 納品差異ステッパー [＋] [ー] */}
+                    <div className="flex items-center gap-0.5">
+                      <RepeatButton
+                        onAction={() => handleRecordChange(idx, 'deliveryDiff', (record.deliveryDiff || 0) + 1)}
+                        className="h-8 w-7 sm:w-8 rounded-lg bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-900 font-black text-sm flex items-center justify-center border border-purple-300"
+                        ariaLabel="納品数を1増やす"
+                      >
+                        ＋
+                      </RepeatButton>
+                      <RepeatButton
+                        onAction={() => handleRecordChange(idx, 'deliveryDiff', (record.deliveryDiff || 0) - 1)}
+                        className="h-8 w-7 sm:w-8 rounded-lg bg-purple-100 hover:bg-purple-200 active:bg-purple-300 text-purple-900 font-black text-sm flex items-center justify-center border border-purple-300"
+                        ariaLabel="納品数を1減らす"
+                      >
+                        ー
+                      </RepeatButton>
+                    </div>
+
                     {/* コメントボタン */}
                     <button
                       type="button"
@@ -536,6 +565,41 @@ export default function WasteCountPage() {
                         onAction={() => adjustSoldOutTime(idx, -5)}
                         className="h-8 w-7 sm:w-8 rounded-lg bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-900 font-black text-sm flex items-center justify-center border border-orange-300"
                         ariaLabel="完売時間を5分戻す"
+                      >
+                        ー
+                      </RepeatButton>
+                    </div>
+                  </div>
+
+                  {/* 中央ブロック: 試食数: [ 0 ] 個 [＋] [ー] */}
+                  <div className="flex items-center gap-1 sm:gap-1.5">
+                    <span className="text-xs sm:text-sm text-gray-800 font-bold whitespace-nowrap">試食数:</span>
+                    <div className="flex items-center bg-gray-50 border border-gray-300 rounded-lg px-1.5 h-8">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={record.sampleCount || 0}
+                        onChange={e => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          handleRecordChange(idx, 'sampleCount', val === '' ? 0 : parseInt(val, 10));
+                        }}
+                        className="w-8 sm:w-10 text-center text-xl sm:text-2xl font-black bg-transparent border-none p-0 focus:outline-none text-gray-900 tabular-nums"
+                      />
+                      <span className="text-xs font-semibold text-gray-600 ml-0.5">個</span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <RepeatButton
+                        onAction={() => handleRecordChange(idx, 'sampleCount', (record.sampleCount || 0) + 1)}
+                        className="h-8 w-7 sm:w-8 rounded-lg bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-900 font-black text-sm flex items-center justify-center border border-emerald-300"
+                        ariaLabel="試食数を1増やす"
+                      >
+                        ＋
+                      </RepeatButton>
+                      <RepeatButton
+                        onAction={() => handleRecordChange(idx, 'sampleCount', Math.max(0, (record.sampleCount || 0) - 1))}
+                        className="h-8 w-7 sm:w-8 rounded-lg bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-900 font-black text-sm flex items-center justify-center border border-emerald-300"
+                        ariaLabel="試食数を1減らす"
                       >
                         ー
                       </RepeatButton>
