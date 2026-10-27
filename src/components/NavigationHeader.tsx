@@ -104,7 +104,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 4.05</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 4.06</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -220,6 +220,18 @@ export default function NavigationHeader() {
               <span className="font-bold text-slate-500 flex-shrink-0 mr-2">Admin Menu:</span>
               <Link href="/admin/users" className={`font-bold flex-shrink-0 ${pathname === '/admin/users' ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}>👥 ユーザー管理</Link>
               <Link href="/admin/stores" className={`font-bold flex-shrink-0 ${pathname === '/admin/stores' ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}>🏪 店舗・設備管理</Link>
+            </>
+          )}
+
+          {(role === 'store_loss_manager' || role === 'company_loss_manager') && (
+            <>
+              <span className="font-bold text-slate-500 flex-shrink-0 mr-2">Loss Menu:</span>
+              <Link href="/store-manager/waste" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/waste' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📸 ロスパン登録</Link>
+              <Link href="/store-manager/analytics" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/analytics' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📊 実績解析</Link>
+              <Link href="/store-manager/profile" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/profile' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏪 店舗基礎データ</Link>
+              {role === 'company_loss_manager' && (
+                <Link href="/store-manager/products" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/products' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏷️ 販売商品マスタ</Link>
+              )}
             </>
           )}
         </div>

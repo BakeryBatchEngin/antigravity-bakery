@@ -506,6 +506,29 @@ export async function initDb() {
     );
   `);
 
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS store_profiles (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER UNIQUE NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      business_hours TEXT,
+      location_characteristics TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS daily_loss_ai_analyses (
+      id SERIAL PRIMARY KEY,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      target_date TEXT NOT NULL,
+      ai_comment TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(store_id, target_date)
+    );
+  `);
+
   // 監査ログ用テーブルの追加
   await database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (

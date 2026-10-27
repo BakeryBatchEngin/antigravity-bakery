@@ -12,8 +12,25 @@ const ROLE_ACCESS = {
   master: ['/admin/ingredients', '/admin/doughs', '/admin/wips', '/admin/products', '/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/forecast'], 
   manager: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/manager', '/api/admin/products', '/api/admin/doughs', '/forecast'], 
   chef: ['/production', '/reports', '/orders', '/order-breakdowns', '/settings', '/mixers', '/api/admin/products', '/api/admin/doughs', '/forecast'], 
-  store_loss_manager: ['/store-manager/waste', '/api/vision', '/api/waste', '/api/orders/import-weekly'],
-  company_loss_manager: ['/store-manager', '/api/vision', '/api/waste', '/api/orders/import-weekly', '/api/sales-products'],
+  store_loss_manager: [
+    '/store-manager/waste',
+    '/store-manager/profile',
+    '/store-manager/analytics',
+    '/api/vision',
+    '/api/waste',
+    '/api/orders/import-weekly',
+    '/api/store-profile',
+    '/api/loss-analytics',
+  ],
+  company_loss_manager: [
+    '/store-manager',
+    '/api/vision',
+    '/api/waste',
+    '/api/orders/import-weekly',
+    '/api/sales-products',
+    '/api/store-profile',
+    '/api/loss-analytics',
+  ],
 };
 
 export async function middleware(request: NextRequest) {

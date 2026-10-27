@@ -251,7 +251,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className={`grid grid-cols-1 ${role === 'company_loss_manager' ? 'md:grid-cols-3 max-w-6xl' : 'md:grid-cols-2 max-w-4xl'} gap-6 w-full mt-4`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 w-full max-w-6xl mt-4">
             <Link 
               href="/store-manager/waste" 
               className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-blue-500 transition-all group"
@@ -282,6 +282,26 @@ export default function Home() {
                 </>
               )}
             </div>
+
+            {/* 実績解析（日次） */}
+            <Link 
+              href="/store-manager/analytics" 
+              className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-purple-500 transition-all group"
+            >
+              <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">📊</span>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">実績解析</h3>
+              <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">販売・ロス・試食とAI分析・完売グラフ</p>
+            </Link>
+
+            {/* 店舗基礎データ設定 */}
+            <Link 
+              href="/store-manager/profile" 
+              className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-amber-500 transition-all group"
+            >
+              <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">🏪</span>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">店舗基礎データ</h3>
+              <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">曜日別営業時間と立地条件・特徴の登録</p>
+            </Link>
 
             {role === 'company_loss_manager' && (
               <Link
