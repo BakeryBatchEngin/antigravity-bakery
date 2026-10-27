@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, Save, Loader2, AlertCircle, MessageSquare, X, PlusCircle, RefreshCw, Sparkles } from 'lucide-react';
 
 interface Product {
@@ -100,6 +100,21 @@ function getCategoryStyle(category?: string, productCode?: string): CategoryColo
   };
 }
 
+
+// 変更比較用の正規化シリアライズ関数（未定義値や不要プロパティの差異を排除）
+function serializeRecords(recs: WasteRecord[]): string {
+  return JSON.stringify(
+    recs.map(r => ({
+      c: r.productCode,
+      w: Number(r.wasteCount || 0),
+      t: String(r.soldOutTime || ''),
+      m: String(r.comment || '').trim(),
+      d: Number(r.deliveryDiff || 0),
+      s: Number(r.sampleCount || 0),
+    }))
+  );
+}
+
 const RepeatButton: React.FC<RepeatButtonProps> = ({ onAction, className, children, disabled, ariaLabel }) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -177,20 +192,84 @@ export default function WasteCountPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 保存済み状態のスナップショット（stateで管理し、保存完了時に確実に再レンダリングして未保存バッジを消す）
+  const [savedSnapshot, setSavedSnapshot] = useState<string>('');
+
+  // 未保存の変更があるかどうか判定
+  const isDirty = useMemo(() => {
+    if (!savedSnapshot || records.length === 0) return false;
+    return serializeRecords(records) !== savedSnapshot;
+  }, [records, savedSnapshot]);
+
+  // 未保存時のページ離脱防止（ブラウザ戻る・タブ閉じ・リンククリック）
   useEffect(() => {
-    // 日付変更時はプレビューやAI検出バッジをクリア
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (!isDirty) return;
+
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest('a');
+      if (!anchor) return;
+
+      const href = anchor.getAttribute('href');
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        const currentPath = window.location.pathname;
+        if (href !== currentPath) {
+          const ok = window.confirm(
+            '【警告】まだ保存ボタンを押していません！\n\nこのページを離れると、入力・変更した内容がすべて失われます。\n\n本当に移動しますか？'
+          );
+          if (!ok) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('click', handleDocumentClick, true);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('click', handleDocumentClick, true);
+    };
+  }, [isDirty]);
+
+  // 日付変更時の未保存確認
+  const handleDateChange = (newDate: string) => {
+    if (newDate === targetDate) return;
+    if (isDirty) {
+      const ok = window.confirm(
+        '【警告】まだ保存ボタンを押していません！\n\n日付を変更すると、現在入力中の内容が失われます。\n\n日付を変更してもよろしいですか？'
+      );
+      if (!ok) return;
+    }
+    setTargetDate(newDate);
+  };
+
+  useEffect(() => {
+    // 日付変更時はプレビューやAI検出バッジ、保存スナップショットをクリア
     setImagePreview(null);
     setAiDetectedCodes(new Set());
     setLastAiDetections([]);
     setMessage(null);
+    setSavedSnapshot('');
 
     const fetchTargets = async () => {
       try {
         const res = await fetch(`/api/waste/targets?date=${targetDate}`);
         const data = await res.json();
         if (res.ok) {
-          setRecords(data.records || []);
-          setProducts((data.records || []).map((r: any) => ({
+          const loaded = data.records || [];
+          setRecords(loaded);
+          setSavedSnapshot(serializeRecords(loaded));
+          setProducts(loaded.map((r: any) => ({
             product_code: r.productCode,
             product_name: r.productName
           })));
@@ -439,6 +518,7 @@ export default function WasteCountPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '保存に失敗しました');
 
+      setSavedSnapshot(serializeRecords(records));
       setMessage({ type: 'success', text: '店舗のロス記録をデータベースに正常に保存しました！' });
     } catch (error: any) {
       console.error(error);
@@ -454,10 +534,16 @@ export default function WasteCountPage() {
       <div className="bg-white border-b px-4 py-3 shadow-sm sticky top-0 z-10 flex items-center justify-between">
         <h1 className="text-lg sm:text-xl font-bold text-gray-800">ロスパン自動カウント</h1>
         <div className="flex items-center gap-2">
+          {isDirty && (
+            <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping"></span>
+              未保存
+            </span>
+          )}
           <input
             type="date"
             value={targetDate}
-            onChange={e => setTargetDate(e.target.value)}
+            onChange={e => handleDateChange(e.target.value)}
             className="p-1.5 border rounded-lg text-sm bg-gray-50 font-bold focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -740,13 +826,22 @@ export default function WasteCountPage() {
       {/* 画面下部固定の保存ボタンバー */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t p-3 z-20 shadow-lg">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-          <div className="text-xs sm:text-sm text-gray-600">
-            登録件数: <span className="font-bold text-gray-900">{records.length}</span> 品目
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+            <span>登録件数: <span className="font-bold text-gray-900">{records.length}</span> 品目</span>
+            {isDirty && (
+              <span className="text-amber-800 font-bold bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md text-[11px] sm:text-xs">
+                ● 未保存の変更あり
+              </span>
+            )}
           </div>
           <button
             onClick={handleSave}
             disabled={isSaving || records.length === 0}
-            className="py-3 px-8 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-md disabled:opacity-50 transition-colors text-base"
+            className={`py-3 px-8 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md disabled:opacity-50 transition-colors text-base text-white ${
+              isDirty
+                ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 ring-2 ring-amber-300'
+                : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
+            }`}
           >
             {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
             {isSaving ? '店舗データ保存中...' : '店舗データを保存する'}

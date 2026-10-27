@@ -437,12 +437,18 @@ export default function LossAnalyticsPage() {
                     A〜O列（15項目）: オーダー・納品差分・販売・ロス・試食・完売グラフ
                   </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-2 text-xs flex-wrap">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span> 早期完売（開店後50%以内）
+                    <span className="w-2 h-2 rounded-full bg-rose-500"></span> 早期完売（営業時間50%以内）
                   </span>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">
                     <span className="w-2 h-2 rounded-full bg-blue-500"></span> 通常完売
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 完売（ロス0）
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                    <span className="w-2 h-2 rounded-full bg-slate-400"></span> 未完売（ロス有）
                   </span>
                 </div>
               </div>
@@ -564,9 +570,10 @@ export default function LossAnalyticsPage() {
                             )}
                           </td>
 
-                          {/* N列: 完売グラフ */}
+                          {/* N列: 完売グラフ（全行で棒を表示、ロスがある場合は右にロス数を表示） */}
                           <td className="py-2 px-3">
                             {row.soldOutTime ? (
+                              /* ① 完売時間がある商品 */
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px]">
                                   <span
@@ -579,9 +586,14 @@ export default function LossAnalyticsPage() {
                                     ⏰ {row.soldOutTime}
                                     {row.soldOutStatus === 'early' && ' (早期)'}
                                   </span>
-                                  <span className="text-gray-400 font-mono">{row.soldOutPercent}%</span>
+                                  {row.wasteCount > 0 ? (
+                                    <span className="font-black text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded">
+                                      ロス: {row.wasteCount}個
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400 font-mono">{row.soldOutPercent}%</span>
+                                  )}
                                 </div>
-                                {/* タイムラインバー */}
                                 <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden relative">
                                   <div
                                     className={`h-full transition-all rounded-full ${
@@ -592,11 +604,33 @@ export default function LossAnalyticsPage() {
                                 </div>
                               </div>
                             ) : row.wasteCount > 0 ? (
-                              <span className="inline-block text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-                                ロス有（未完売）
-                              </span>
+                              /* ② ロスがある商品（未完売）: 棒を表示＋右にロス数を明瞭表示 */
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className="font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                                    未完売
+                                  </span>
+                                  <span className="font-black text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded">
+                                    ロス: {row.wasteCount}個
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden relative">
+                                  <div className="h-full bg-slate-400 rounded-full w-full" />
+                                </div>
+                              </div>
                             ) : (
-                              <span className="text-gray-300">-</span>
+                              /* ③ ロスが0で完売時間が未記録の商品: 閉店まで完売（100%緑バー） */
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded">
+                                    完売（時間未入力）
+                                  </span>
+                                  <span className="text-emerald-700 font-bold font-mono">100%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden relative">
+                                  <div className="h-full bg-emerald-400 rounded-full w-full" />
+                                </div>
+                              </div>
                             )}
                           </td>
 
