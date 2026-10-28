@@ -224,10 +224,17 @@ export async function initDb() {
       dough_code TEXT NOT NULL,
       dough_name TEXT,
       dough_amount REAL NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (product_code, dough_code)
     );
   `);
+
+  try {
+    await database.exec(`ALTER TABLE product_doughs ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL;`);
+  } catch (e) {
+    // column might already exist
+  }
 
   await database.exec(`
     CREATE TABLE IF NOT EXISTS ingredients (
