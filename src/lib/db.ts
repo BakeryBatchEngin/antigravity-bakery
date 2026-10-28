@@ -180,7 +180,6 @@ export async function initDb() {
   // DATETIME は TIMESTAMP に翻訳済み
 
   await database.exec(`
-    DROP TABLE IF EXISTS orders CASCADE;
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
@@ -219,8 +218,7 @@ export async function initDb() {
   `);
 
   await database.exec(`
-    DROP TABLE IF EXISTS product_doughs CASCADE;
-    CREATE TABLE product_doughs (
+    CREATE TABLE IF NOT EXISTS product_doughs (
       product_code TEXT NOT NULL,
       product_name TEXT NOT NULL,
       dough_code TEXT NOT NULL,
@@ -343,7 +341,6 @@ export async function initDb() {
   `);
   
   await database.exec(`
-    DROP TABLE IF EXISTS daily_production_plans CASCADE;
     CREATE TABLE IF NOT EXISTS daily_production_plans (
       id SERIAL PRIMARY KEY,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
@@ -356,7 +353,6 @@ export async function initDb() {
   `);
 
   await database.exec(`
-    DROP TABLE IF EXISTS ingredient_usages CASCADE;
     CREATE TABLE IF NOT EXISTS ingredient_usages (
       id SERIAL PRIMARY KEY,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
@@ -370,7 +366,6 @@ export async function initDb() {
   `);
   
   await database.exec(`
-    DROP TABLE IF EXISTS batch_executions CASCADE;
     CREATE TABLE IF NOT EXISTS batch_executions (
       id SERIAL PRIMARY KEY,
       store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
@@ -383,7 +378,6 @@ export async function initDb() {
   
   // 発注元ごとの内訳データを格納するテーブル
   await database.exec(`
-    DROP TABLE IF EXISTS order_breakdowns CASCADE;
     CREATE TABLE IF NOT EXISTS order_breakdowns (
       id            SERIAL PRIMARY KEY,
       store_id      INTEGER REFERENCES stores(id) ON DELETE CASCADE,

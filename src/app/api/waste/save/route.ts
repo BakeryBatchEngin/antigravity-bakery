@@ -88,6 +88,20 @@ export async function POST(req: Request) {
             [effectiveStoreId, targetDate, imageBase64, resultsJson]
           );
         }
+
+        // 店舗ごとに直近3件のみを保持し、4件目以降の古い写真ログを自動削除（DB容量の肥大化を防止）
+        const recentPhotoLogs = (await txDb.all(
+          `SELECT id FROM waste_photo_logs WHERE store_id = ? ORDER BY id DESC LIMIT 3`,
+          [effectiveStoreId]
+        )) as { id: number }[];
+        if (recentPhotoLogs && recentPhotoLogs.length >= 3) {
+          const keepIds = recentPhotoLogs.map((r: { id: number }) => r.id);
+          const placeholders = keepIds.map(() => '?').join(',');
+          await txDb.run(
+            `DELETE FROM waste_photo_logs WHERE store_id = ? AND id NOT IN (${placeholders})`,
+            [effectiveStoreId, ...keepIds]
+          );
+        }
       }
     });
 
