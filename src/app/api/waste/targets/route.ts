@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: '認証エラー' }, { status: 401 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     // 対象店舗の決定
     const resolved = await resolveLossStoreId(db, user);

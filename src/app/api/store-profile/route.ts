@@ -11,7 +11,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: '認証エラー' }, { status: 401 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
     const resolved = await resolveLossStoreId(db, user);
     if (resolved.error || !resolved.storeId) {
       return NextResponse.json({ error: resolved.error || '店舗が特定できません' }, { status: resolved.status || 400 });
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '認証エラー' }, { status: 401 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
     const resolved = await resolveLossStoreId(db, user);
     if (resolved.error || !resolved.storeId) {
       return NextResponse.json({ error: resolved.error || '店舗が特定できません' }, { status: resolved.status || 400 });

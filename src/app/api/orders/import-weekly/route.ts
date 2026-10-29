@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '不正なモードです。' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     // 取込先の店舗を決定（店舗ロス管理者は自店舗のみ。統括管理者はヘッダーで選択した自社の店舗）
     const resolved = await resolveLossStoreId(db, user);

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const storeId = storeCookie ? Number(storeCookie.value) : null;
     if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       if (ingredients.length === 0) {
@@ -75,7 +75,7 @@ export async function DELETE(request: Request) {
     const storeId = storeCookie ? Number(storeCookie.value) : null;
     if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       if (ingredientCode) {

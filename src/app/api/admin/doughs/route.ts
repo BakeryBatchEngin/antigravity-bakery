@@ -16,7 +16,7 @@ export async function GET() {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     let standardRows;
     let subRows;
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
-    const db = await getDb();
+    const db = await getDb(user);
 
     await db.transaction(async (txDb) => {
       if (tenantId) {
@@ -181,7 +181,7 @@ export async function DELETE(request: Request) {
     const code = searchParams.get('id');
     if (!code) return NextResponse.json({ error: '生地IDが指定されていません' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
 
     // 商品マスタで使われているかチェック（自テナントのみ）

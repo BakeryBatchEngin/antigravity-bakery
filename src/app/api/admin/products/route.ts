@@ -17,7 +17,7 @@ export async function GET() {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     // super_admin は全テナント、それ以外は自テナントのみ
     const tenantFilter = user.role === 'super_admin' ? '' : 'WHERE tenant_id = ?';
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '少なくとも1つ以上の使用生地または副材料を追加してください' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
     // super_admin はリクエストのtenant_id、それ以外は自テナント
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
 
@@ -188,7 +188,7 @@ export async function DELETE(request: Request) {
     const code = searchParams.get('id');
     if (!code) return NextResponse.json({ error: '商品コードが指定されていません' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     // 他テナントの商品は削除不可
     if (user.role !== 'super_admin') {

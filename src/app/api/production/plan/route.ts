@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
     const storeCookie = cookieStore.get('active_store_id');
     const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
     let storeId = null;
@@ -107,7 +107,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
     const storeCookie = cookieStore.get('active_store_id');
     const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
     let storeId = null;

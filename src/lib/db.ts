@@ -24,45 +24,107 @@ function convertSqliteToPg(sql: string): string {
   return sql.replace(/\?/g, () => `$${index++}`);
 }
 
+export interface UserContext {
+  id?: number | null;
+  tenant_id?: number | null;
+  role?: string | null;
+  store_id?: number | null;
+}
+
 /**
  * 既存のSQLite呼び出し（db.get, db.all, etc）を
  * 内部でPostgreSQL(pg)に変換して実行するラッパークラス
+ * ユーザーコンテキスト(userContext)を渡すことで、RLS用のセッション変数を自動適用します。
  */
-class PgCompatibleDb {
+export class PgCompatibleDb {
+  private userContext?: UserContext | null;
+
+  constructor(userContext?: UserContext | null) {
+    this.userContext = userContext;
+  }
+
+  private async executeWithContext<T>(action: (runner: any) => Promise<T>): Promise<T> {
+    if (!this.userContext) {
+      return await action(getPool());
+    }
+
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id) : '';
+      const roleStr = this.userContext.role || '';
+      const userIdStr = this.userContext.id != null ? String(this.userContext.id) : '';
+      const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id) : '';
+
+      await client.query(`SET LOCAL app.current_tenant_id = '${tenantIdStr}'`);
+      await client.query(`SET LOCAL app.current_user_role = '${roleStr}'`);
+      await client.query(`SET LOCAL app.current_user_id = '${userIdStr}'`);
+      await client.query(`SET LOCAL app.current_store_id = '${storeIdStr}'`);
+      await client.query('SET LOCAL ROLE authenticated');
+
+      const res = await action(client);
+      await client.query('COMMIT');
+      return res;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
   
   // 1行だけ取得するメソッド (SQLiteの db.get 互換)
   async get(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const { rows } = await getPool().query(pgSql, params);
-    return rows[0] || undefined;
+    return await this.executeWithContext(async (runner) => {
+      const { rows } = await runner.query(pgSql, params);
+      return rows[0] || undefined;
+    });
   }
 
   // 全行取得するメソッド (SQLiteの db.all 互換)
   async all(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const { rows } = await getPool().query(pgSql, params);
-    return rows;
+    return await this.executeWithContext(async (runner) => {
+      const { rows } = await runner.query(pgSql, params);
+      return rows;
+    });
   }
 
   // 更新や挿入を行うメソッド (SQLiteの db.run 互換)
   async run(sql: string, params: any[] = []) {
     const pgSql = convertSqliteToPg(sql);
-    const result = await getPool().query(pgSql, params);
-    // SQLite互換の戻り値をエミュレート
-    return { changes: result.rowCount, lastID: 0 }; 
+    return await this.executeWithContext(async (runner) => {
+      const result = await runner.query(pgSql, params);
+      return { changes: result.rowCount, lastID: 0 };
+    });
   }
 
   // 複数行のSQLをまとめて実行するメソッド (SQLiteの db.exec 互換)
   async exec(sql: string) {
-    // プレースホルダは使われない前提のDDL実行など
-    await getPool().query(sql);
+    return await this.executeWithContext(async (runner) => {
+      await runner.query(sql);
+    });
   }
 
-  // 権限を切り替えずにトランザクションを実行するメソッド（マスタデータ保存用）
+  // トランザクションを実行するメソッド（userContextがある場合は自動でRLSセッションを保持）
   async transaction(callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
     const client = await getPool().connect();
     try {
       await client.query('BEGIN');
+
+      if (this.userContext) {
+        const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id) : '';
+        const roleStr = this.userContext.role || '';
+        const userIdStr = this.userContext.id != null ? String(this.userContext.id) : '';
+        const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id) : '';
+
+        await client.query(`SET LOCAL app.current_tenant_id = '${tenantIdStr}'`);
+        await client.query(`SET LOCAL app.current_user_role = '${roleStr}'`);
+        await client.query(`SET LOCAL app.current_user_id = '${userIdStr}'`);
+        await client.query(`SET LOCAL app.current_store_id = '${storeIdStr}'`);
+        await client.query('SET LOCAL ROLE authenticated');
+      }
       
       // トランザクション専用の互換オブジェクトを作成
       const txDb = {
@@ -94,14 +156,12 @@ class PgCompatibleDb {
     }
   }
 
-  // 監査ログやRLS用のコンテキスト(ユーザーID等)をセットして、トランザクション内でクエリを実行するメソッド
-  // ※ RLSを機能させるために、スーパーユーザー権限を捨てて 'authenticated' ロールに切り替えます
+  // 互換用：手動でユーザーID等を渡すトランザクションメソッド
   async transactionWithUser(userId: number | null, storeId: number | null, role: string | null = null, callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
     const client = await getPool().connect();
     try {
       await client.query('BEGIN');
       
-      // PostgreSQLのセッション変数にユーザーID、店舗ID、ロールをセットする
       if (userId) {
         await client.query(`SET LOCAL app.current_user_id = '${userId}'`);
       } else {
@@ -120,11 +180,8 @@ class PgCompatibleDb {
         await client.query(`SET LOCAL app.current_user_role = ''`);
       }
 
-      // RLS（Row Level Security）を機能させるため、一時的に一般ユーザー権限に切り替える
-      // （※ スーパーユーザー postgres のままだと RLS が無視されてしまうため）
-      await client.query(`SET LOCAL ROLE authenticated`);
+      await client.query('SET LOCAL ROLE authenticated');
 
-      // トランザクション専用の互換オブジェクトを作成
       const txDb = {
         get: async (sql: string, params: any[] = []) => {
           const pgSql = convertSqliteToPg(sql);
@@ -155,10 +212,13 @@ class PgCompatibleDb {
   }
 }
 
-// シングルトンインスタンス
+// シングルトンインスタンス（後方互換・システム管理者用）
 const dbInstance = new PgCompatibleDb();
 
-export async function getDb() {
+export async function getDb(user?: UserContext | null) {
+  if (user) {
+    return new PgCompatibleDb(user);
+  }
   return dbInstance;
 }
 

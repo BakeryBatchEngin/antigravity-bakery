@@ -40,7 +40,7 @@ export async function GET() {
     sheet.getRow(1).font = { bold: true };
     sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
 
-    rows.forEach(row => {
+    rows.forEach((row: any) => {
       sheet.addRow({
         dough_id: row.dough_id,
         dough_name: row.dough_name,

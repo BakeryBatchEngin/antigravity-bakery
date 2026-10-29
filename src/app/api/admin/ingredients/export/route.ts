@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     });
 
     // データ行 (2行目以降)
-    ingredients.forEach(ing => {
+    ingredients.forEach((ing: any) => {
       // ステータスの日本語化
       let statusStr = '有効';
       if (ing.status === 'suspended') statusStr = '利用停止';

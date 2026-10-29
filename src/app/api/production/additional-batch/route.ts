@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       if (subDough) {
         // Sub-dough
         const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
-          subIngs.sort((a, b) => {
+          subIngs.sort((a: any, b: any) => {
             if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
             if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
             return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
           FROM doughs d
           WHERE d.dough_id = ? AND d.tenant_id = ?
           `, [subDough.base_dough_id, user.tenant_id]);
-          recipeIngredients.sort((a, b) => {
+          recipeIngredients.sort((a: any, b: any) => {
             if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
             if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
             return (b.bakers_percent || 0) - (a.bakers_percent || 0);
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
           FROM doughs d
           WHERE d.dough_id = ? AND d.tenant_id = ?
           `, [pd.dough_code, user.tenant_id]);
-          recipeIngredients.sort((a, b) => {
+          recipeIngredients.sort((a: any, b: any) => {
             if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
             if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
             return (b.bakers_percent || 0) - (a.bakers_percent || 0);
