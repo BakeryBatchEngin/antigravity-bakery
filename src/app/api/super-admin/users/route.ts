@@ -46,7 +46,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'ユーザー名・表示名・権限は必須です' }, { status: 400 });
   }
 
+  // super_admin 以外は所属会社（tenant_id）が必須
+  if (role !== 'super_admin' && !tenant_id) {
+    return NextResponse.json({ error: 'システム管理者以外の権限では、所属会社（テナント）の指定が必須です' }, { status: 400 });
+  }
+
   const db = await getDb();
+
+  // 担当店舗が自社の店舗か検証
+  if (store_ids && Array.isArray(store_ids) && store_ids.length > 0 && tenant_id) {
+    const tenantStores = await db.all('SELECT id FROM stores WHERE tenant_id = ?', [tenant_id]);
+    const validStoreIds = new Set(tenantStores.map((s: any) => s.id));
+    for (const sid of store_ids) {
+      if (!validStoreIds.has(sid)) {
+        return NextResponse.json({ error: '選択された店舗の中に、所属会社と一致しない店舗が含まれています' }, { status: 400 });
+      }
+    }
+  }
   try {
     // パスワードをbcryptでハッシュ化
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
@@ -88,7 +104,23 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'ID・表示名・権限は必須です' }, { status: 400 });
   }
 
+  // super_admin 以外は所属会社（tenant_id）が必須
+  if (role !== 'super_admin' && !tenant_id) {
+    return NextResponse.json({ error: 'システム管理者以外の権限では、所属会社（テナント）の指定が必須です' }, { status: 400 });
+  }
+
   const db = await getDb();
+
+  // 担当店舗が自社の店舗か検証
+  if (store_ids && Array.isArray(store_ids) && store_ids.length > 0 && tenant_id) {
+    const tenantStores = await db.all('SELECT id FROM stores WHERE tenant_id = ?', [tenant_id]);
+    const validStoreIds = new Set(tenantStores.map((s: any) => s.id));
+    for (const sid of store_ids) {
+      if (!validStoreIds.has(sid)) {
+        return NextResponse.json({ error: '選択された店舗の中に、所属会社と一致しない店舗が含まれています' }, { status: 400 });
+      }
+    }
+  }
 
   // パスワードが入力されている場合はハッシュ化して更新、空欄なら現在のパスワードを維持
   if (password && password.length > 0) {

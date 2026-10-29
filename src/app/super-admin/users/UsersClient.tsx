@@ -45,10 +45,10 @@ export default function UsersClient({
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [search, setSearch] = useState('');
 
-  // 選択中テナントに絞った店舗リスト
+  // 選択中テナントに絞った店舗リスト（未選択の場合は他社店舗が表示されないよう空にする）
   const filteredStores = modal.data.tenant_id
     ? stores.filter(s => s.tenant_id === Number(modal.data.tenant_id))
-    : stores;
+    : [];
 
   const openAdd = () => setModal({ open: true, mode: 'add', data: emptyUser() });
   const openEdit = (u: User) => setModal({
@@ -77,6 +77,12 @@ export default function UsersClient({
   };
 
   const handleSave = async () => {
+    // super_admin 以外は所属会社（tenant_id）の選択が必須
+    if (modal.data.role !== 'super_admin' && !modal.data.tenant_id) {
+      setError('システム管理者以外の権限では、所属会社（テナント）の選択が必須です');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -244,32 +250,51 @@ export default function UsersClient({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">所属会社（テナント）</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  所属会社（テナント）
+                  {modal.data.role !== 'super_admin' && <span className="text-red-500 font-bold ml-1">*必須</span>}
+                </label>
                 <select
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   value={modal.data.tenant_id || ''}
                   onChange={e => setModal(m => ({ ...m, data: { ...m.data, tenant_id: e.target.value ? Number(e.target.value) : null, store_ids: [] } }))}
                 >
-                  <option value="">（なし / システム管理者）</option>
+                  {modal.data.role === 'super_admin' ? (
+                    <option value="">（なし / システム管理者）</option>
+                  ) : (
+                    <option value="">-- 所属会社を選択してください --</option>
+                  )}
                   {tenants.map(t => <option key={t.id} value={t.id}>{t.tenant_name}</option>)}
                 </select>
               </div>
-              {filteredStores.length > 0 && (
+              {modal.data.role !== 'super_admin' && (
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">担当店舗（複数選択可）</label>
-                  <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-3">
-                    {filteredStores.map(s => (
-                      <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={(modal.data.store_ids || []).includes(s.id)}
-                          onChange={() => toggleStore(s.id)}
-                          className="accent-indigo-600"
-                        />
-                        {s.store_name}
-                      </label>
-                    ))}
-                  </div>
+                  {modal.data.tenant_id ? (
+                    filteredStores.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-3 bg-slate-50">
+                        {filteredStores.map(s => (
+                          <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer hover:text-indigo-600">
+                            <input
+                              type="checkbox"
+                              checked={(modal.data.store_ids || []).includes(s.id)}
+                              onChange={() => toggleStore(s.id)}
+                              className="accent-indigo-600 w-4 h-4 rounded"
+                            />
+                            {s.store_name}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50">
+                        この会社にはまだ登録されている店舗がありません。
+                      </p>
+                    )
+                  ) : (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      ⚠️ 上記の「所属会社（テナント）」を選択すると、その会社の店舗が表示されます。
+                    </p>
+                  )}
                 </div>
               )}
             </div>
