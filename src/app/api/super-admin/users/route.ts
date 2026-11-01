@@ -26,6 +26,12 @@ export async function GET() {
       u.id, u.username, u.display_name, u.role,
       (u.password IS NOT NULL AND u.password != '') AS has_password,
       (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+      u.failed_attempts,
+      u.locked_until,
+      CASE 
+        WHEN u.locked_until IS NOT NULL AND u.locked_until > CURRENT_TIMESTAMP THEN true 
+        ELSE false 
+      END AS is_locked,
       u.tenant_id, u.created_at,
       t.tenant_name,
       STRING_AGG(s.store_name, ', ' ORDER BY s.store_name) AS store_names
@@ -72,10 +78,15 @@ export async function POST(request: Request) {
       ? await bcrypt.hash(password.trim(), 10)
       : null;
 
+    // PINコードもbcryptでハッシュ化
+    const hashedPin = pin_code && String(pin_code).trim().length > 0
+      ? await bcrypt.hash(String(pin_code).trim(), 10)
+      : null;
+
     await db.run(
-      `INSERT INTO users (username, display_name, role, password, pin_code, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [username.trim(), display_name.trim(), role, hashedPassword, pin_code ? String(pin_code).trim() : null, tenant_id || null]
+      `INSERT INTO users (username, display_name, role, password, pin_code, tenant_id, failed_attempts, locked_until)
+       VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`,
+      [username.trim(), display_name.trim(), role, hashedPassword, hashedPin, tenant_id || null]
     );
 
     // 新規IDを取得
@@ -139,10 +150,10 @@ export async function PUT(request: Request) {
     passwordToSave = await bcrypt.hash(password.trim(), 10);
   }
 
-  // PINコードが入力されている場合は更新、空欄なら現在のPINを維持
+  // PINコードが入力されている場合はハッシュ化して更新、空欄なら現在のPINを維持
   let pinToSave = currentUser.pin_code;
   if (pin_code !== undefined && pin_code !== null && String(pin_code).trim().length > 0) {
-    pinToSave = String(pin_code).trim();
+    pinToSave = await bcrypt.hash(String(pin_code).trim(), 10);
   }
 
   await db.run(
@@ -159,6 +170,23 @@ export async function PUT(request: Request) {
   }
 
   return NextResponse.json({ success: true });
+}
+
+// PATCH: アカウントのロック解除
+export async function PATCH(request: Request) {
+  const admin = await checkSuperAdmin();
+  if (!admin) return NextResponse.json({ error: '権限がありません' }, { status: 403 });
+
+  const { id } = await request.json();
+  if (!id) return NextResponse.json({ error: 'IDが必要です' }, { status: 400 });
+
+  const db = await getDb(admin);
+  await db.run(
+    `UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`,
+    [id]
+  );
+
+  return NextResponse.json({ success: true, message: 'アカウントのロックを解除しました' });
 }
 
 // DELETE: ユーザー削除

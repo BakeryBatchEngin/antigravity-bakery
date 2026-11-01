@@ -35,12 +35,17 @@ export async function GET() {
     let users;
     if (user.role === 'super_admin') {
       // super_admin は全ユーザーを見られる
-      // ※パスワードハッシュやPINの生データは返さず、設定済みフラグのみ返す
       users = await db.all(`
         SELECT 
           u.id, u.username, u.role, u.display_name,
           (u.password IS NOT NULL AND u.password != '') AS has_password,
           (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+          u.failed_attempts,
+          u.locked_until,
+          CASE 
+            WHEN u.locked_until IS NOT NULL AND u.locked_until > CURRENT_TIMESTAMP THEN true 
+            ELSE false 
+          END AS is_locked,
           u.tenant_id, u.created_at,
           COALESCE(
             (SELECT json_agg(store_id) FROM user_stores WHERE user_id = u.id),
@@ -56,6 +61,12 @@ export async function GET() {
           u.id, u.username, u.role, u.display_name,
           (u.password IS NOT NULL AND u.password != '') AS has_password,
           (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+          u.failed_attempts,
+          u.locked_until,
+          CASE 
+            WHEN u.locked_until IS NOT NULL AND u.locked_until > CURRENT_TIMESTAMP THEN true 
+            ELSE false 
+          END AS is_locked,
           u.tenant_id, u.created_at,
           COALESCE(
             (SELECT json_agg(store_id) FROM user_stores WHERE user_id = u.id),
@@ -113,10 +124,15 @@ export async function POST(request: Request) {
       ? await bcrypt.hash(password.trim(), 10)
       : null;
 
+    // PINコードもbcryptでハッシュ化（空の場合はnull）
+    const hashedPin = pin_code && String(pin_code).trim().length > 0
+      ? await bcrypt.hash(String(pin_code).trim(), 10)
+      : null;
+
     await db.run(
-      `INSERT INTO users (username, role, display_name, pin_code, password, tenant_id) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [username.trim(), role, display_name.trim(), pin_code ? pin_code.trim() : null, hashedPassword, tenantId]
+      `INSERT INTO users (username, role, display_name, pin_code, password, tenant_id, failed_attempts, locked_until) 
+       VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`,
+      [username.trim(), role, display_name.trim(), hashedPin, hashedPassword, tenantId]
     );
 
     const newUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username.trim()]);
@@ -182,10 +198,10 @@ export async function PUT(request: Request) {
       passwordToSave = await bcrypt.hash(password.trim(), 10);
     }
 
-    // PINコードの更新処理（入力がある場合のみ更新、空文字なら既存のPINを維持）
+    // PINコードの更新処理（入力がある場合のみハッシュ化して更新、空文字なら既存を維持）
     let pinToSave: string | null = targetUser.pin_code;
     if (pin_code !== undefined && pin_code !== null && String(pin_code).trim().length > 0) {
-      pinToSave = String(pin_code).trim();
+      pinToSave = await bcrypt.hash(String(pin_code).trim(), 10);
     }
 
     await db.run(
@@ -210,6 +226,44 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json({ error: 'ユーザーの更新に失敗しました' }, { status: 500 });
+  }
+}
+
+// アカウントのロック解除（PATCH）
+export async function PATCH(request: Request) {
+  try {
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
+    const { id } = await request.json();
+    if (!id) return NextResponse.json({ error: 'ユーザーIDが必要です' }, { status: 400 });
+
+    const db = await getDb(user);
+    const targetUser = await db.get(`SELECT id, role, tenant_id FROM users WHERE id = ?`, [id]);
+    if (!targetUser) {
+      return NextResponse.json({ error: '対象のユーザーが見つかりません' }, { status: 404 });
+    }
+
+    // 自分のテナントのユーザーかチェック
+    if (user.role !== 'super_admin') {
+      if (targetUser.tenant_id !== user.tenant_id) {
+        return NextResponse.json({ error: '他のテナントのユーザーは操作できません' }, { status: 403 });
+      }
+      if (targetUser.role === 'admin' || targetUser.role === 'super_admin') {
+        return NextResponse.json({ error: '権限エラー：管理者アカウントの操作はできません' }, { status: 403 });
+      }
+    }
+
+    // 失敗回数をリセットし、ロックを解除
+    await db.run(
+      `UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?`,
+      [id]
+    );
+
+    return NextResponse.json({ success: true, message: 'アカウントのロックを解除しました' });
+  } catch (error) {
+    console.error('Error unlocking user:', error);
+    return NextResponse.json({ error: 'ロック解除に失敗しました' }, { status: 500 });
   }
 }
 

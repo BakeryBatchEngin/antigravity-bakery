@@ -19,6 +19,9 @@ type User = {
   role: string;
   has_pin?: boolean;
   has_password?: boolean;
+  failed_attempts?: number;
+  locked_until?: string | null;
+  is_locked?: boolean;
   tenant_id: number | null;
   tenant_name: string | null;
   store_names: string | null;
@@ -45,6 +48,7 @@ export default function UsersClient({
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [search, setSearch] = useState('');
+  const [unlockLoadingId, setUnlockLoadingId] = useState<number | null>(null);
 
   // 選択中テナントに絞った店舗リスト（未選択の場合は他社店舗が表示されないよう空にする）
   const filteredStores = modal.data.tenant_id
@@ -118,6 +122,27 @@ export default function UsersClient({
     }
   };
 
+  // アカウントのロック解除
+  const handleUnlock = async (u: User) => {
+    if (!confirm(`ユーザー「${u.display_name}」のアカウントロックを解除しますか？`)) return;
+
+    setUnlockLoadingId(u.id);
+    try {
+      const res = await fetch('/api/super-admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: u.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'ロック解除に失敗しました');
+      await refreshList();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setUnlockLoadingId(null);
+    }
+  };
+
   const filtered = users.filter(u =>
     u.display_name.includes(search) || u.username.includes(search) || (u.tenant_name || '').includes(search)
   );
@@ -149,7 +174,7 @@ export default function UsersClient({
                 <th className="p-4 font-medium">権限</th>
                 <th className="p-4 font-medium">所属会社</th>
                 <th className="p-4 font-medium">担当店舗</th>
-                <th className="p-4 font-medium">認証設定</th>
+                <th className="p-4 font-medium">認証設定 / 状態</th>
                 <th className="p-4 font-medium">登録日</th>
                 <th className="p-4 font-medium">操作</th>
               </tr>
@@ -170,11 +195,26 @@ export default function UsersClient({
                       <td className="p-4 text-slate-600">{u.tenant_name || <span className="text-slate-300">-</span>}</td>
                       <td className="p-4 text-slate-500 text-xs max-w-xs truncate">{u.store_names || <span className="text-slate-300">-</span>}</td>
                       <td className="p-4 text-xs">
-                        <div className="flex flex-col gap-0.5">
-                          {u.has_password && <span className="text-indigo-600 font-medium">● PW設定済</span>}
-                          {u.has_pin && <span className="text-amber-600 font-medium">● PIN設定済</span>}
-                          {!u.has_password && !u.has_pin && <span className="text-slate-400 italic">未設定</span>}
-                        </div>
+                        {u.is_locked ? (
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold flex items-center gap-1 border border-red-200">
+                              <span>🔒</span> ロック中
+                            </span>
+                            <button
+                              onClick={() => handleUnlock(u)}
+                              disabled={unlockLoadingId === u.id}
+                              className="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition font-bold"
+                            >
+                              {unlockLoadingId === u.id ? '解除中...' : '解除'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            {u.has_password && <span className="text-indigo-600 font-medium">● PW設定済</span>}
+                            {u.has_pin && <span className="text-amber-600 font-medium">● PIN設定済 (暗号化)</span>}
+                            {!u.has_password && !u.has_pin && <span className="text-slate-400 italic">未設定</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="p-4 text-slate-500 text-xs">{new Date(u.created_at).toLocaleDateString('ja-JP')}</td>
                       <td className="p-4">
@@ -236,7 +276,10 @@ export default function UsersClient({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">PINコード（4桁）{modal.mode === 'edit' && <span className="text-slate-400 font-normal">（空欄=変更なし）</span>}</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    PINコード（4桁数字）
+                    <span className="text-xs text-slate-400 font-normal block sm:inline sm:ml-1">※暗号化保存</span>
+                  </label>
                   <input
                     type="password"
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"

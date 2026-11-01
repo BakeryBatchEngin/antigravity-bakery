@@ -24,6 +24,12 @@ export default async function UsersPage() {
       u.id, u.username, u.display_name, u.role,
       (u.password IS NOT NULL AND u.password != '') AS has_password,
       (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+      u.failed_attempts,
+      u.locked_until,
+      CASE 
+        WHEN u.locked_until IS NOT NULL AND u.locked_until > CURRENT_TIMESTAMP THEN true 
+        ELSE false 
+      END AS is_locked,
       u.tenant_id, u.created_at,
       t.tenant_name,
       STRING_AGG(s.store_name, ', ' ORDER BY s.store_name) AS store_names

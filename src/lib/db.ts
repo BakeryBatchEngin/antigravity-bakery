@@ -483,14 +483,16 @@ export async function initDb() {
 
   await database.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id           SERIAL PRIMARY KEY,
-      tenant_id    INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
-      username     TEXT UNIQUE NOT NULL,
-      role         TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef', 'store_loss_manager', 'company_loss_manager')),
-      pin_code     TEXT,
-      password     TEXT,
-      display_name TEXT NOT NULL,
-      created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      id              SERIAL PRIMARY KEY,
+      tenant_id       INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      username        TEXT UNIQUE NOT NULL,
+      role            TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef', 'store_loss_manager', 'company_loss_manager')),
+      pin_code        TEXT,
+      password        TEXT,
+      display_name    TEXT NOT NULL,
+      failed_attempts INTEGER DEFAULT 0,
+      locked_until    TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+      created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
@@ -603,6 +605,12 @@ export async function initDb() {
       new_data JSONB,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  // users テーブルのセキュリティ強化カラム（失敗回数・ロック日時）の安全追加
+  await database.exec(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE DEFAULT NULL;
   `);
 
   console.log('PostgreSQL Database initialized successfully.');

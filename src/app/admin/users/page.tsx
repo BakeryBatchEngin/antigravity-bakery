@@ -9,6 +9,9 @@ type User = {
   display_name: string;
   has_pin?: boolean;
   has_password?: boolean;
+  failed_attempts?: number;
+  locked_until?: string | null;
+  is_locked?: boolean;
   store_ids: number[];
 };
 
@@ -23,6 +26,7 @@ export default function UsersAdminPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [unlockLoadingId, setUnlockLoadingId] = useState<number | null>(null);
   
   // モーダルステート
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -148,6 +152,28 @@ export default function UsersAdminPage() {
     }
   };
 
+  // アカウントのロック解除
+  const handleUnlock = async (id: number, name: string) => {
+    if (!confirm(`ユーザー「${name}」のアカウントロックを解除しますか？`)) return;
+    
+    setUnlockLoadingId(id);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ロック解除に失敗しました');
+      
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setUnlockLoadingId(null);
+    }
+  };
+
   return (
     <div>
       <main className="max-w-6xl mx-auto p-4 sm:p-6 pb-20 pt-8">
@@ -175,7 +201,7 @@ export default function UsersAdminPage() {
                   <tr className="bg-slate-900/50 text-slate-400 text-sm uppercase tracking-wider">
                     <th className="p-4 font-bold border-b border-slate-700">表示名 / ID</th>
                     <th className="p-4 font-bold border-b border-slate-700">権限 (Role)</th>
-                    <th className="p-4 font-bold border-b border-slate-700">認証設定</th>
+                    <th className="p-4 font-bold border-b border-slate-700">認証設定 / 状態</th>
                     <th className="p-4 font-bold border-b border-slate-700">担当店舗</th>
                     <th className="p-4 font-bold border-b border-slate-700 text-right">操作</th>
                   </tr>
@@ -202,21 +228,38 @@ export default function UsersAdminPage() {
                           </span>
                         </td>
                         <td className="p-4 text-xs">
-                          <div className="flex flex-col gap-1">
-                            {user.has_password && (
-                              <span className="text-slate-300 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                パスワード設定済
-                              </span>
-                            )}
-                            {user.has_pin && (
-                              <span className="text-amber-300 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                PINコード設定済
-                              </span>
-                            )}
-                            {!user.has_password && !user.has_pin && (
-                              <span className="text-slate-500 italic">未設定</span>
+                          <div className="flex flex-col gap-1.5">
+                            {user.is_locked ? (
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-bold flex items-center gap-1">
+                                  <span>🔒</span> ロック中
+                                </span>
+                                <button
+                                  onClick={() => handleUnlock(user.id, user.display_name)}
+                                  disabled={unlockLoadingId === user.id}
+                                  className="text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-0.5 rounded border border-amber-500/50 transition font-bold"
+                                >
+                                  {unlockLoadingId === user.id ? '解除中...' : '解除する'}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                {user.has_password && (
+                                  <span className="text-slate-300 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    パスワード設定済
+                                  </span>
+                                )}
+                                {user.has_pin && (
+                                  <span className="text-amber-300 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                    PINコード設定済 (暗号化)
+                                  </span>
+                                )}
+                                {!user.has_password && !user.has_pin && (
+                                  <span className="text-slate-500 italic">未設定</span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -349,7 +392,8 @@ export default function UsersAdminPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-2">PINコード (Chef用)</label>
+                  <label className="block text-sm font-bold text-slate-300 mb-1">PINコード (Chef用)</label>
+                  <span className="block text-[11px] text-slate-400 mb-2">※4桁数字（暗号化保存）</span>
                   <input 
                     type="password" 
                     placeholder={editingUser ? (editingUser.has_pin ? '変更時のみ入力（設定済）' : '設定する場合に入力') : '省略で未設定 (例: 1234)'}

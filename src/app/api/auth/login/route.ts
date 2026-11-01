@@ -6,6 +6,31 @@ import bcrypt from 'bcryptjs';
 const DUMMY_HASH = '$2b$10$7EqJtq98hPqEX7fNZaFWoO.8/k.Y9j7kGf56hQ3kG.aC9m9yK5J/2';
 const GENERIC_AUTH_ERROR = 'ユーザー名またはパスワード（PIN）が正しくありません';
 
+// ロックアウト設定
+const MAX_FAILED_ATTEMPTS = 5; // 連続5回失敗でロック
+const LOCKOUT_MINUTES = 15;     // 15分間ロック
+
+async function handleLoginFailure(db: any, user: any): Promise<{ locked: boolean; remainingMinutes: number }> {
+  const currentAttempts = (user.failed_attempts || 0) + 1;
+
+  if (currentAttempts >= MAX_FAILED_ATTEMPTS) {
+    // 5回以上の失敗：15分間ロックアウト
+    const lockUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+    await db.run(
+      `UPDATE users SET failed_attempts = $1, locked_until = $2 WHERE id = $3`,
+      [currentAttempts, lockUntil.toISOString(), user.id]
+    );
+    return { locked: true, remainingMinutes: LOCKOUT_MINUTES };
+  } else {
+    // 失敗カウントのみ加算
+    await db.run(
+      `UPDATE users SET failed_attempts = $1 WHERE id = $2`,
+      [currentAttempts, user.id]
+    );
+    return { locked: false, remainingMinutes: 0 };
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { username, pin, password } = await request.json();
@@ -25,35 +50,107 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
+    // アカウントのロック状態チェック
+    if (user.locked_until) {
+      const lockExpiry = new Date(user.locked_until);
+      const now = new Date();
+      if (lockExpiry > now) {
+        const remainingMinutes = Math.max(1, Math.ceil((lockExpiry.getTime() - now.getTime()) / (60 * 1000)));
+        return NextResponse.json({
+          error: `ログイン失敗が続いたため、アカウントが一時的にロックされています。あと約${remainingMinutes}分後に再度お試しいただくか、管理者にお問い合わせください。`,
+          locked: true,
+          remainingMinutes,
+        }, { status: 423 }); // 423 Locked
+      }
+    }
+
     // 認証チェック
     let isAuthenticated = false;
+    let needPinUpgrade = false;
+    let needPasswordUpgrade = false;
     
     if (user.role === 'chef') {
-      // ChefはPINで認証（ステップ2でPINもハッシュ化予定）
-      if (!pin || user.pin_code !== pin) {
+      // ChefはPINで認証
+      if (!pin) {
+        const failResult = await handleLoginFailure(db, user);
+        if (failResult.locked) {
+          return NextResponse.json({
+            error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
+            locked: true,
+            remainingMinutes: failResult.remainingMinutes,
+          }, { status: 423 });
+        }
         return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
-      isAuthenticated = true;
+
+      const storedPin = user.pin_code || '';
+      if (storedPin.startsWith('$2b$') || storedPin.startsWith('$2a$')) {
+        // ハッシュ化済みPIN → bcryptで照合
+        isAuthenticated = await bcrypt.compare(String(pin).trim(), storedPin);
+      } else {
+        // 平文PIN（旧シェフ移行用） → 直接比較し、成功したらハッシュ化自動アップグレード
+        isAuthenticated = storedPin === String(pin).trim();
+        if (isAuthenticated) {
+          needPinUpgrade = true;
+        }
+      }
     } else {
       // Admin, Master, Manager はパスワードで認証
       if (!password) {
+        const failResult = await handleLoginFailure(db, user);
+        if (failResult.locked) {
+          return NextResponse.json({
+            error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
+            locked: true,
+            remainingMinutes: failResult.remainingMinutes,
+          }, { status: 423 });
+        }
         return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
+
       const storedPassword = user.password || '';
       if (storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2a$')) {
         // ハッシュ化済みパスワード → bcryptで照合
         isAuthenticated = await bcrypt.compare(password, storedPassword);
       } else {
-        // 平文パスワード（移行前の旧ユーザー） → 直接比較
+        // 平文パスワード（旧ユーザー移行用） → 直接比較し、成功したらハッシュ化自動アップグレード
         isAuthenticated = storedPassword === password;
-      }
-      if (!isAuthenticated) {
-        return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
+        if (isAuthenticated) {
+          needPasswordUpgrade = true;
+        }
       }
     }
 
     if (!isAuthenticated) {
+      const failResult = await handleLoginFailure(db, user);
+      if (failResult.locked) {
+        return NextResponse.json({
+          error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
+          locked: true,
+          remainingMinutes: failResult.remainingMinutes,
+        }, { status: 423 });
+      }
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
+    }
+
+    // 認証成功時：失敗カウントとロックをリセット（平文PIN/PWの場合は自動ハッシュ化）
+    if (needPinUpgrade) {
+      const hashedPin = await bcrypt.hash(String(pin).trim(), 10);
+      await db.run(
+        `UPDATE users SET pin_code = $1, failed_attempts = 0, locked_until = NULL WHERE id = $2`,
+        [hashedPin, user.id]
+      );
+    } else if (needPasswordUpgrade) {
+      const hashedPw = await bcrypt.hash(password, 10);
+      await db.run(
+        `UPDATE users SET password = $1, failed_attempts = 0, locked_until = NULL WHERE id = $2`,
+        [hashedPw, user.id]
+      );
+    } else if (user.failed_attempts > 0 || user.locked_until !== null) {
+      await db.run(
+        `UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1`,
+        [user.id]
+      );
     }
 
     // 担当店舗を取得
