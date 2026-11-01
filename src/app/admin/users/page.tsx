@@ -7,8 +7,8 @@ type User = {
   username: string;
   role: string;
   display_name: string;
-  pin_code: string | null;
-  password: string | null;
+  has_pin?: boolean;
+  has_password?: boolean;
   store_ids: number[];
 };
 
@@ -69,8 +69,8 @@ export default function UsersAdminPage() {
         username: user.username,
         role: user.role,
         display_name: user.display_name,
-        pin_code: user.pin_code || '',
-        password: user.password || '',
+        pin_code: '', // セキュリティのため既存PINは画面に送出せず、空文字初期化（空なら変更なし）
+        password: '', // セキュリティのため既存パスワードは画面に送出せず、空文字初期化（空なら変更なし）
         store_ids: user.store_ids || [],
       });
     } else {
@@ -154,7 +154,7 @@ export default function UsersAdminPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-800">ユーザー管理</h1>
-            <p className="text-slate-600 mt-1">システムを利用するアカウントの発行・権限設定</p>
+            <p className="text-slate-600 mt-1">自社店舗でシステムを利用するアカウントの発行・権限設定</p>
           </div>
           <button 
             onClick={() => handleOpenModal()}
@@ -175,62 +175,95 @@ export default function UsersAdminPage() {
                   <tr className="bg-slate-900/50 text-slate-400 text-sm uppercase tracking-wider">
                     <th className="p-4 font-bold border-b border-slate-700">表示名 / ID</th>
                     <th className="p-4 font-bold border-b border-slate-700">権限 (Role)</th>
+                    <th className="p-4 font-bold border-b border-slate-700">認証設定</th>
                     <th className="p-4 font-bold border-b border-slate-700">担当店舗</th>
                     <th className="p-4 font-bold border-b border-slate-700 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
-                  {users.map(user => (
-                    <tr key={user.id} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="p-4">
-                        <div className="font-bold text-white text-lg">{user.display_name}</div>
-                        <div className="text-sm text-slate-400 mt-1 font-mono">{user.username}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-3 py-1 text-xs font-bold rounded-full border ${
-                          user.role === 'admin' ? 'bg-red-900/30 text-red-400 border-red-800' :
-                          user.role === 'master' ? 'bg-purple-900/30 text-purple-400 border-purple-800' :
-                          user.role === 'manager' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
-                          'bg-emerald-900/30 text-emerald-400 border-emerald-800'
-                        }`}>
-                          {user.role.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="p-4 text-sm text-slate-700">
-                        {user.store_ids && user.store_ids.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {user.store_ids.map(id => {
-                              const store = stores.find(s => s.id === id);
-                              return store ? (
-                                <span key={id} className="bg-slate-700 px-2 py-1 rounded text-xs">
-                                  {store.store_name}
-                                </span>
-                              ) : null;
-                            })}
+                  {users.map(user => {
+                    const isAdminUser = user.role === 'admin' || user.role === 'super_admin';
+                    return (
+                      <tr key={user.id} className="hover:bg-slate-700/30 transition-colors">
+                        <td className="p-4">
+                          <div className="font-bold text-white text-lg">{user.display_name}</div>
+                          <div className="text-sm text-slate-400 mt-1 font-mono">{user.username}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-3 py-1 text-xs font-bold rounded-full border ${
+                            user.role === 'admin' ? 'bg-red-900/30 text-red-400 border-red-800' :
+                            user.role === 'master' ? 'bg-purple-900/30 text-purple-400 border-purple-800' :
+                            user.role === 'manager' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
+                            user.role === 'store_loss_manager' ? 'bg-orange-900/30 text-orange-400 border-orange-800' :
+                            user.role === 'company_loss_manager' ? 'bg-rose-900/30 text-rose-400 border-rose-800' :
+                            'bg-emerald-900/30 text-emerald-400 border-emerald-800'
+                          }`}>
+                            {user.role.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="p-4 text-xs">
+                          <div className="flex flex-col gap-1">
+                            {user.has_password && (
+                              <span className="text-slate-300 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                パスワード設定済
+                              </span>
+                            )}
+                            {user.has_pin && (
+                              <span className="text-amber-300 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                PINコード設定済
+                              </span>
+                            )}
+                            {!user.has_password && !user.has_pin && (
+                              <span className="text-slate-500 italic">未設定</span>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-slate-500 italic">指定なし (全店または未設定)</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right">
-                        <button 
-                          onClick={() => handleOpenModal(user)}
-                          className="text-blue-400 hover:text-blue-300 font-bold px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors mr-2"
-                        >
-                          編集
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(user.id, user.display_name)}
-                          className="text-red-400 hover:text-red-300 font-bold px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
-                        >
-                          削除
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="p-4 text-sm text-slate-300">
+                          {user.store_ids && user.store_ids.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {user.store_ids.map(id => {
+                                const store = stores.find(s => s.id === id);
+                                return store ? (
+                                  <span key={id} className="bg-slate-700 px-2 py-1 rounded text-xs text-white">
+                                    {store.store_name}
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 italic">全店または指定なし</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-right">
+                          {isAdminUser ? (
+                            <span className="text-xs text-slate-500 italic px-2 py-1 bg-slate-900/40 rounded border border-slate-700">
+                              本部管理
+                            </span>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => handleOpenModal(user)}
+                                className="text-blue-400 hover:text-blue-300 font-bold px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors mr-2 text-sm"
+                              >
+                                編集
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(user.id, user.display_name)}
+                                className="text-red-400 hover:text-red-300 font-bold px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                              >
+                                削除
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {users.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-slate-500">
+                      <td colSpan={5} className="p-8 text-center text-slate-500">
                         登録されているユーザーはいません
                       </td>
                     </tr>
@@ -264,7 +297,7 @@ export default function UsersAdminPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">ログインID <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">ログインID <span className="text-red-400">*</span></label>
                   <input 
                     type="text" 
                     required 
@@ -274,7 +307,7 @@ export default function UsersAdminPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">表示名 <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">表示名 <span className="text-red-400">*</span></label>
                   <input 
                     type="text" 
                     required 
@@ -286,7 +319,7 @@ export default function UsersAdminPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">権限 (Role) <span className="text-red-400">*</span></label>
+                <label className="block text-sm font-bold text-slate-300 mb-2">権限 (Role) <span className="text-red-400">*</span></label>
                 <select 
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none font-bold"
                   value={formData.role}
@@ -297,28 +330,31 @@ export default function UsersAdminPage() {
                   <option value="manager">Manager (エリアマネージャー / 複数店舗管理)</option>
                   <option value="company_loss_manager">Company Loss Manager (企業ロス統括管理者 / 全店アクセス)</option>
                   <option value="master">Master (商品・マスタデータ管理者)</option>
-                  <option value="admin">Admin (システム管理者)</option>
+                  {/* AdminはSuperadminのみがSuperAdmin画面から登録する運用 */}
+                  {editingUser?.role === 'admin' && (
+                    <option value="admin" disabled>Admin (管理者 ※変更不可)</option>
+                  )}
                 </select>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
                 <div>
-                  <label className="block text-sm font-bold text-slate-400 mb-2">パスワード (管理職用)</label>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">パスワード (管理職用)</label>
                   <input 
-                    type="text" 
-                    placeholder="省略で未設定"
+                    type="password" 
+                    placeholder={editingUser ? (editingUser.has_password ? '変更時のみ入力（設定済）' : '設定する場合に入力') : '省略で未設定'}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-amber-500 outline-none"
                     value={formData.password}
                     onChange={e => setFormData({...formData, password: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-400 mb-2">PINコード (Chef用)</label>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">PINコード (Chef用)</label>
                   <input 
-                    type="text" 
-                    placeholder="省略で未設定 (例: 1234)"
+                    type="password" 
+                    placeholder={editingUser ? (editingUser.has_pin ? '変更時のみ入力（設定済）' : '設定する場合に入力') : '省略で未設定 (例: 1234)'}
                     maxLength={4}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-amber-500 outline-none"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-amber-500 outline-none font-mono"
                     value={formData.pin_code}
                     onChange={e => setFormData({...formData, pin_code: e.target.value})}
                   />
@@ -327,8 +363,8 @@ export default function UsersAdminPage() {
 
               {(formData.role === 'chef' || formData.role === 'manager' || formData.role === 'store_loss_manager') && (
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-3">
-                    担当店舗 <span className="text-xs text-slate-500 font-normal ml-2">※複数選択可</span>
+                  <label className="block text-sm font-bold text-slate-300 mb-3">
+                    担当店舗 <span className="text-xs text-slate-400 font-normal ml-2">※複数選択可</span>
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {stores.map(store => {
@@ -359,7 +395,7 @@ export default function UsersAdminPage() {
                 <button 
                   type="button" 
                   onClick={handleCloseModal}
-                  className="px-6 py-3 font-bold text-slate-700 hover:bg-slate-700 rounded-xl transition-colors"
+                  className="px-6 py-3 font-bold text-slate-300 hover:bg-slate-700 rounded-xl transition-colors"
                 >
                   キャンセル
                 </button>

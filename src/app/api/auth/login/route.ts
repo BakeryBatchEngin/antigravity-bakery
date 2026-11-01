@@ -2,12 +2,16 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
+// タイミング攻撃緩和用のダミーハッシュ（ユーザーが存在しない場合も同じ計算時間を消費させる）
+const DUMMY_HASH = '$2b$10$7EqJtq98hPqEX7fNZaFWoO.8/k.Y9j7kGf56hQ3kG.aC9m9yK5J/2';
+const GENERIC_AUTH_ERROR = 'ユーザー名またはパスワード（PIN）が正しくありません';
+
 export async function POST(request: Request) {
   try {
     const { username, pin, password } = await request.json();
 
     if (!username) {
-      return NextResponse.json({ error: 'ユーザー名が必要です' }, { status: 400 });
+      return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     const db = await getDb();
@@ -15,24 +19,25 @@ export async function POST(request: Request) {
     // DBからユーザー検索
     const user = await db.get(`SELECT * FROM users WHERE username = $1`, [username]);
     
+    // ユーザーが存在しない場合：ダミーのbcrypt比較を実行して応答時間を平準化（ユーザー列挙攻撃対策）
     if (!user) {
-      return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 401 });
+      await bcrypt.compare(password || pin || 'dummy', DUMMY_HASH);
+      return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     // 認証チェック
     let isAuthenticated = false;
     
     if (user.role === 'chef') {
-      // ChefはPINで認証
+      // ChefはPINで認証（ステップ2でPINもハッシュ化予定）
       if (!pin || user.pin_code !== pin) {
-        return NextResponse.json({ error: 'PINコードが間違っています' }, { status: 401 });
+        return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
       isAuthenticated = true;
     } else {
       // Admin, Master, Manager はパスワードで認証
-      // bcryptハッシュ（$2b$で始まる）と平文の両方に対応（移行期間用）
       if (!password) {
-        return NextResponse.json({ error: 'パスワードが必要です' }, { status: 401 });
+        return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
       const storedPassword = user.password || '';
       if (storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2a$')) {
@@ -43,12 +48,12 @@ export async function POST(request: Request) {
         isAuthenticated = storedPassword === password;
       }
       if (!isAuthenticated) {
-        return NextResponse.json({ error: 'パスワードが間違っています' }, { status: 401 });
+        return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
     }
 
     if (!isAuthenticated) {
-      return NextResponse.json({ error: '認証に失敗しました' }, { status: 401 });
+      return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     // 担当店舗を取得
@@ -63,7 +68,7 @@ export async function POST(request: Request) {
       role: user.role,
       displayName: user.display_name,
       storeIds: storeIds,
-      tenant_id: user.tenant_id ?? null,  // ← テナントIDを追加
+      tenant_id: user.tenant_id ?? null,
     };
     
     const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
@@ -73,22 +78,25 @@ export async function POST(request: Request) {
     const signature = await signSession(sessionString);
 
     const response = NextResponse.json({ success: true, user: sessionData });
+    const isProduction = process.env.NODE_ENV === 'production';
     
-    // セッションCookieをセット
+    // セッションCookieをセット (本番環境ではsecure属性を付与)
     response.cookies.set({
       name: 'bakery_session',
       value: sessionString,
       httpOnly: true,
+      secure: isProduction,
       path: '/',
       maxAge: 60 * 60 * 24 * 7, // 1週間有効
       sameSite: 'lax',
     });
 
-    // 署名Cookieをセット
+    // 署名Cookieをセット (本番環境ではsecure属性を付与)
     response.cookies.set({
       name: 'bakery_session_sig',
       value: signature,
       httpOnly: true,
+      secure: isProduction,
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
       sameSite: 'lax',
@@ -101,6 +109,7 @@ export async function POST(request: Request) {
         name: 'active_store_id',
         value: 'manager',
         httpOnly: true,
+        secure: isProduction,
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
         sameSite: 'lax',
@@ -111,6 +120,7 @@ export async function POST(request: Request) {
         name: 'active_store_id',
         value: String(storeIds[0]),
         httpOnly: true,
+        secure: isProduction,
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
         sameSite: 'lax',
@@ -126,6 +136,7 @@ export async function POST(request: Request) {
           name: 'active_store_id',
           value: String(firstStore.id),
           httpOnly: true,
+          secure: isProduction,
           path: '/',
           maxAge: 60 * 60 * 24 * 30,
           sameSite: 'lax',

@@ -16,12 +16,15 @@ export default async function UsersPage() {
   }
   if (user.role !== 'super_admin') return <div className="text-red-500 p-4">権限がありません</div>;
 
-  const db = await getDb();
+  const db = await getDb(user);
 
-  // 全ユーザー（所属テナント名・担当店舗名を含む）を取得
+  // 全ユーザー（所属テナント名・担当店舗名を含む）を取得（パスワード・PINの生値は取得しない）
   const users = await db.all(`
     SELECT
-      u.id, u.username, u.display_name, u.role, u.pin_code, u.tenant_id, u.created_at,
+      u.id, u.username, u.display_name, u.role,
+      (u.password IS NOT NULL AND u.password != '') AS has_password,
+      (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+      u.tenant_id, u.created_at,
       t.tenant_name,
       STRING_AGG(s.store_name, ', ' ORDER BY s.store_name) AS store_names
     FROM users u

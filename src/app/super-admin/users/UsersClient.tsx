@@ -17,7 +17,8 @@ type User = {
   username: string;
   display_name: string;
   role: string;
-  pin_code: string | null;
+  has_pin?: boolean;
+  has_password?: boolean;
   tenant_id: number | null;
   tenant_name: string | null;
   store_names: string | null;
@@ -53,7 +54,7 @@ export default function UsersClient({
   const openAdd = () => setModal({ open: true, mode: 'add', data: emptyUser() });
   const openEdit = (u: User) => setModal({
     open: true, mode: 'edit',
-    data: { ...u, password: '', pin_code: u.pin_code || '', store_ids: [] },
+    data: { ...u, password: '', pin_code: '', store_ids: [] },
   });
   const closeModal = () => { setModal(m => ({ ...m, open: false })); setError(''); };
 
@@ -148,13 +149,14 @@ export default function UsersClient({
                 <th className="p-4 font-medium">権限</th>
                 <th className="p-4 font-medium">所属会社</th>
                 <th className="p-4 font-medium">担当店舗</th>
+                <th className="p-4 font-medium">認証設定</th>
                 <th className="p-4 font-medium">登録日</th>
                 <th className="p-4 font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="p-8 text-center text-slate-400">該当するユーザーがいません</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-slate-400">該当するユーザーがいません</td></tr>
               ) : (
                 filtered.map(u => {
                   const roleInfo = ROLE_LABELS[u.role] || { label: u.role, color: 'bg-slate-100 text-slate-600' };
@@ -167,6 +169,13 @@ export default function UsersClient({
                       </td>
                       <td className="p-4 text-slate-600">{u.tenant_name || <span className="text-slate-300">-</span>}</td>
                       <td className="p-4 text-slate-500 text-xs max-w-xs truncate">{u.store_names || <span className="text-slate-300">-</span>}</td>
+                      <td className="p-4 text-xs">
+                        <div className="flex flex-col gap-0.5">
+                          {u.has_password && <span className="text-indigo-600 font-medium">● PW設定済</span>}
+                          {u.has_pin && <span className="text-amber-600 font-medium">● PIN設定済</span>}
+                          {!u.has_password && !u.has_pin && <span className="text-slate-400 italic">未設定</span>}
+                        </div>
+                      </td>
                       <td className="p-4 text-slate-500 text-xs">{new Date(u.created_at).toLocaleDateString('ja-JP')}</td>
                       <td className="p-4">
                         <div className="flex gap-2">
@@ -223,17 +232,18 @@ export default function UsersClient({
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     value={modal.data.password}
                     onChange={e => setModal(m => ({ ...m, data: { ...m.data, password: e.target.value } }))}
-                    placeholder="パスワード"
+                    placeholder={modal.mode === 'edit' ? '変更時のみ入力（空欄=変更なし）' : 'パスワード'}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">PINコード（4桁）</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">PINコード（4桁）{modal.mode === 'edit' && <span className="text-slate-400 font-normal">（空欄=変更なし）</span>}</label>
                   <input
+                    type="password"
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     value={modal.data.pin_code}
                     onChange={e => setModal(m => ({ ...m, data: { ...m.data, pin_code: e.target.value } }))}
                     maxLength={4}
-                    placeholder="0000"
+                    placeholder={modal.mode === 'edit' ? '変更時のみ入力（空欄=変更なし）' : '0000'}
                   />
                 </div>
               </div>
@@ -298,12 +308,14 @@ export default function UsersClient({
                 </div>
               )}
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-              <button onClick={closeModal} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition">キャンセル</button>
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+              <button onClick={closeModal} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm hover:bg-slate-100 transition">
+                キャンセル
+              </button>
               <button
                 onClick={handleSave}
                 disabled={loading}
-                className="px-6 py-2 text-sm bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50 shadow"
               >
                 {loading ? '保存中...' : '保存する'}
               </button>
@@ -314,18 +326,22 @@ export default function UsersClient({
 
       {/* 削除確認モーダル */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">本当に削除しますか？</h3>
-            <p className="text-sm text-slate-500 mb-6">「{deleteConfirm.display_name}」を削除します。この操作は元に戻せません。</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <h4 className="text-lg font-bold text-slate-800">ユーザーの削除確認</h4>
+            <p className="text-sm text-slate-600">
+              「<span className="font-semibold text-slate-900">{deleteConfirm.display_name}</span>（@{deleteConfirm.username}）」を本当に削除しますか？この操作は取り消せません。
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm hover:bg-slate-100 transition">
+                キャンセル
+              </button>
               <button
                 onClick={() => handleDelete(deleteConfirm)}
                 disabled={loading}
-                className="px-4 py-2 text-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50 shadow"
               >
-                削除する
+                {loading ? '削除中...' : '削除する'}
               </button>
             </div>
           </div>

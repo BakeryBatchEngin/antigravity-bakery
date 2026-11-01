@@ -20,10 +20,13 @@ export async function GET() {
   const user = await checkSuperAdmin();
   if (!user) return NextResponse.json({ error: '権限がありません' }, { status: 403 });
 
-  const db = await getDb();
+  const db = await getDb(user);
   const users = await db.all(`
     SELECT
-      u.id, u.username, u.display_name, u.role, u.pin_code, u.tenant_id, u.created_at,
+      u.id, u.username, u.display_name, u.role,
+      (u.password IS NOT NULL AND u.password != '') AS has_password,
+      (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
+      u.tenant_id, u.created_at,
       t.tenant_name,
       STRING_AGG(s.store_name, ', ' ORDER BY s.store_name) AS store_names
     FROM users u
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'システム管理者以外の権限では、所属会社（テナント）の指定が必須です' }, { status: 400 });
   }
 
-  const db = await getDb();
+  const db = await getDb(admin);
 
   // 担当店舗が自社の店舗か検証
   if (store_ids && Array.isArray(store_ids) && store_ids.length > 0 && tenant_id) {
@@ -65,16 +68,18 @@ export async function POST(request: Request) {
   }
   try {
     // パスワードをbcryptでハッシュ化
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const hashedPassword = password && password.trim().length > 0
+      ? await bcrypt.hash(password.trim(), 10)
+      : null;
 
-    const result = await db.run(
+    await db.run(
       `INSERT INTO users (username, display_name, role, password, pin_code, tenant_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [username, display_name, role, hashedPassword, pin_code || null, tenant_id || null]
+      [username.trim(), display_name.trim(), role, hashedPassword, pin_code ? String(pin_code).trim() : null, tenant_id || null]
     );
 
     // 新規IDを取得
-    const newUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username]);
+    const newUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username.trim()]);
     if (!newUser) throw new Error('ユーザーの作成に失敗しました');
 
     // 担当店舗を紐づける
@@ -109,7 +114,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'システム管理者以外の権限では、所属会社（テナント）の指定が必須です' }, { status: 400 });
   }
 
-  const db = await getDb();
+  const db = await getDb(admin);
+
+  // 既存ユーザーの情報を取得
+  const currentUser = await db.get(`SELECT id, password, pin_code FROM users WHERE id = ?`, [id]);
+  if (!currentUser) {
+    return NextResponse.json({ error: '対象のユーザーが見つかりません' }, { status: 404 });
+  }
 
   // 担当店舗が自社の店舗か検証
   if (store_ids && Array.isArray(store_ids) && store_ids.length > 0 && tenant_id) {
@@ -123,18 +134,21 @@ export async function PUT(request: Request) {
   }
 
   // パスワードが入力されている場合はハッシュ化して更新、空欄なら現在のパスワードを維持
-  if (password && password.length > 0) {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await db.run(
-      `UPDATE users SET display_name = ?, role = ?, password = ?, pin_code = ?, tenant_id = ? WHERE id = ?`,
-      [display_name, role, hashedPassword, pin_code || null, tenant_id || null, id]
-    );
-  } else {
-    await db.run(
-      `UPDATE users SET display_name = ?, role = ?, pin_code = ?, tenant_id = ? WHERE id = ?`,
-      [display_name, role, pin_code || null, tenant_id || null, id]
-    );
+  let passwordToSave = currentUser.password;
+  if (password && typeof password === 'string' && password.trim().length > 0) {
+    passwordToSave = await bcrypt.hash(password.trim(), 10);
   }
+
+  // PINコードが入力されている場合は更新、空欄なら現在のPINを維持
+  let pinToSave = currentUser.pin_code;
+  if (pin_code !== undefined && pin_code !== null && String(pin_code).trim().length > 0) {
+    pinToSave = String(pin_code).trim();
+  }
+
+  await db.run(
+    `UPDATE users SET display_name = ?, role = ?, password = ?, pin_code = ?, tenant_id = ? WHERE id = ?`,
+    [display_name.trim(), role, passwordToSave, pinToSave, tenant_id || null, id]
+  );
 
   // 担当店舗を更新（一度全削除してから再登録）
   if (store_ids && Array.isArray(store_ids)) {
@@ -156,7 +170,7 @@ export async function DELETE(request: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'IDが必要です' }, { status: 400 });
 
-  const db = await getDb();
+  const db = await getDb(admin);
   await db.run(`DELETE FROM users WHERE id = ?`, [id]);
   return NextResponse.json({ success: true });
 }

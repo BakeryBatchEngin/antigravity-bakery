@@ -3,6 +3,15 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
+// 一般のテナント管理者が作成・付与できるロール一覧（admin, super_admin は除外）
+const ALLOWED_TENANT_ROLES = [
+  'master',
+  'manager',
+  'chef',
+  'store_loss_manager',
+  'company_loss_manager',
+];
+
 // セッションからユーザー情報を取得する共通処理
 async function getUser() {
   const cookieStore = await cookies();
@@ -21,14 +30,17 @@ export async function GET() {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     let users;
     if (user.role === 'super_admin') {
       // super_admin は全ユーザーを見られる
+      // ※パスワードハッシュやPINの生データは返さず、設定済みフラグのみ返す
       users = await db.all(`
         SELECT 
-          u.id, u.username, u.role, u.display_name, u.pin_code, u.password,
+          u.id, u.username, u.role, u.display_name,
+          (u.password IS NOT NULL AND u.password != '') AS has_password,
+          (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
           u.tenant_id, u.created_at,
           COALESCE(
             (SELECT json_agg(store_id) FROM user_stores WHERE user_id = u.id),
@@ -41,7 +53,9 @@ export async function GET() {
       // それ以外は自分のテナントのユーザーのみ
       users = await db.all(`
         SELECT 
-          u.id, u.username, u.role, u.display_name, u.pin_code, u.password,
+          u.id, u.username, u.role, u.display_name,
+          (u.password IS NOT NULL AND u.password != '') AS has_password,
+          (u.pin_code IS NOT NULL AND u.pin_code != '') AS has_pin,
           u.tenant_id, u.created_at,
           COALESCE(
             (SELECT json_agg(store_id) FROM user_stores WHERE user_id = u.id),
@@ -74,12 +88,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 });
     }
 
-    // super_admin ロールのユーザーはsuper_adminのみ作成可能
-    if (role === 'super_admin' && user.role !== 'super_admin') {
-      return NextResponse.json({ error: 'super_adminユーザーは作成できません' }, { status: 403 });
+    // 権限チェック：super_admin 以外は admin / super_admin を作成できない
+    if (user.role !== 'super_admin') {
+      if (role === 'admin' || role === 'super_admin' || !ALLOWED_TENANT_ROLES.includes(role)) {
+        return NextResponse.json(
+          { error: '権限エラー：管理者・システム管理者のアカウントは登録できません' },
+          { status: 403 }
+        );
+      }
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     const existingUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username]);
     if (existingUser) {
@@ -90,15 +109,17 @@ export async function POST(request: Request) {
     const tenantId = user.role === 'super_admin' ? (data.tenant_id || null) : user.tenant_id;
 
     // パスワードをbcryptでハッシュ化（空の場合はnull）
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const hashedPassword = password && password.trim().length > 0
+      ? await bcrypt.hash(password.trim(), 10)
+      : null;
 
     await db.run(
       `INSERT INTO users (username, role, display_name, pin_code, password, tenant_id) 
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [username, role, display_name, pin_code || null, hashedPassword, tenantId]
+      [username.trim(), role, display_name.trim(), pin_code ? pin_code.trim() : null, hashedPassword, tenantId]
     );
 
-    const newUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username]);
+    const newUser = await db.get(`SELECT id FROM users WHERE username = ?`, [username.trim()]);
     const userId = newUser.id;
 
     if (store_ids && Array.isArray(store_ids) && store_ids.length > 0) {
@@ -130,30 +151,48 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
+
+    // 更新対象ユーザーの存在と権限のチェック
+    const targetUser = await db.get(`SELECT id, role, password, pin_code, tenant_id FROM users WHERE id = ?`, [id]);
+    if (!targetUser) {
+      return NextResponse.json({ error: '対象のユーザーが見つかりません' }, { status: 404 });
+    }
 
     // 自分のテナントのユーザーかチェック
     if (user.role !== 'super_admin') {
-      const targetUser = await db.get(`SELECT tenant_id FROM users WHERE id = ?`, [id]);
-      if (!targetUser || targetUser.tenant_id !== user.tenant_id) {
+      if (targetUser.tenant_id !== user.tenant_id) {
         return NextResponse.json({ error: '他のテナントのユーザーは変更できません' }, { status: 403 });
+      }
+
+      // 一般管理者は、admin や super_admin アカウントを変更できない
+      if (targetUser.role === 'admin' || targetUser.role === 'super_admin') {
+        return NextResponse.json({ error: '権限エラー：管理者アカウントの編集はできません' }, { status: 403 });
+      }
+
+      // 一般管理者は、admin や super_admin のロールを誰かに付与できない
+      if (role === 'admin' || role === 'super_admin' || !ALLOWED_TENANT_ROLES.includes(role)) {
+        return NextResponse.json({ error: '権限エラー：その権限を付与することはできません' }, { status: 403 });
       }
     }
 
-    // パスワードをハッシュ化（空欄の場合は現在のパスワードを維持）
-    let passwordToSave: string | null;
-    if (password) {
-      passwordToSave = await bcrypt.hash(password, 10);
-    } else {
-      const currentUser = await db.get(`SELECT password FROM users WHERE id = ?`, [id]);
-      passwordToSave = currentUser?.password || null;
+    // パスワードの更新処理（入力がある場合のみハッシュ化、空文字なら既存のハッシュを維持）
+    let passwordToSave: string | null = targetUser.password;
+    if (password && typeof password === 'string' && password.trim().length > 0) {
+      passwordToSave = await bcrypt.hash(password.trim(), 10);
+    }
+
+    // PINコードの更新処理（入力がある場合のみ更新、空文字なら既存のPINを維持）
+    let pinToSave: string | null = targetUser.pin_code;
+    if (pin_code !== undefined && pin_code !== null && String(pin_code).trim().length > 0) {
+      pinToSave = String(pin_code).trim();
     }
 
     await db.run(
       `UPDATE users 
        SET username = ?, role = ?, display_name = ?, pin_code = ?, password = ?
        WHERE id = ?`,
-      [username, role, display_name, pin_code || null, passwordToSave, id]
+      [username.trim(), role, display_name.trim(), pinToSave, passwordToSave, id]
     );
 
     await db.run(`DELETE FROM user_stores WHERE user_id = ?`, [id]);
@@ -185,13 +224,22 @@ export async function DELETE(request: Request) {
 
     if (!id) return NextResponse.json({ error: 'ユーザーIDが必要です' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
+
+    const targetUser = await db.get(`SELECT id, role, tenant_id FROM users WHERE id = ?`, [id]);
+    if (!targetUser) {
+      return NextResponse.json({ error: '対象のユーザーが見つかりません' }, { status: 404 });
+    }
 
     // 自分のテナントのユーザーかチェック
     if (user.role !== 'super_admin') {
-      const targetUser = await db.get(`SELECT tenant_id FROM users WHERE id = ?`, [id]);
-      if (!targetUser || targetUser.tenant_id !== user.tenant_id) {
+      if (targetUser.tenant_id !== user.tenant_id) {
         return NextResponse.json({ error: '他のテナントのユーザーは削除できません' }, { status: 403 });
+      }
+
+      // 一般管理者は、admin や super_admin アカウントを削除できない
+      if (targetUser.role === 'admin' || targetUser.role === 'super_admin') {
+        return NextResponse.json({ error: '権限エラー：管理者アカウントの削除はできません' }, { status: 403 });
       }
     }
 
