@@ -157,11 +157,32 @@ export class PgCompatibleDb {
   }
 
   // 互換用：手動でユーザーID等を渡すトランザクションメソッド
-  async transactionWithUser(userId: number | null, storeId: number | null, role: string | null = null, callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
+  async transactionWithUser(
+    userId: number | null,
+    storeId: number | null,
+    role: string | null = null,
+    callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>,
+    tenantId?: number | null
+  ) {
     const client = await getPool().connect();
     try {
       await client.query('BEGIN');
       
+      // テナントIDの決定（引数 > インスタンスのuserContext > storeIdからの解決）
+      let effectiveTenantId = tenantId !== undefined ? tenantId : (this.userContext?.tenant_id ?? null);
+      if (effectiveTenantId === null && storeId) {
+        const storeRes = await client.query('SELECT tenant_id FROM stores WHERE id = $1', [storeId]);
+        if (storeRes.rows.length > 0 && storeRes.rows[0].tenant_id != null) {
+          effectiveTenantId = Number(storeRes.rows[0].tenant_id);
+        }
+      }
+
+      if (effectiveTenantId != null) {
+        await client.query(`SET LOCAL app.current_tenant_id = '${effectiveTenantId}'`);
+      } else {
+        await client.query(`SET LOCAL app.current_tenant_id = ''`);
+      }
+
       if (userId) {
         await client.query(`SET LOCAL app.current_user_id = '${userId}'`);
       } else {

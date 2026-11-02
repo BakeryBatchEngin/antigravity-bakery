@@ -127,27 +127,33 @@ export async function POST(req: Request) {
 
     // ---- 登録（Excelに載っている日付分だけ入れ替え） ----
     let ordersCount = 0;
-    await db.transactionWithUser(user.id, effectiveStoreId, user.role, async (txDb) => {
-      for (const d of parsed.dates) {
-        await txDb.run(`DELETE FROM store_sales_orders WHERE store_id = ? AND order_date = ?`, [
-          effectiveStoreId,
-          d.date,
-        ]);
-      }
-      for (const row of rows) {
-        for (let i = 0; i < parsed.dates.length; i++) {
-          const qty = row.quantities[i];
-          if (qty >= 1) {
-            await txDb.run(
-              `INSERT INTO store_sales_orders (store_id, order_date, product_code, product_name, quantity)
-               VALUES (?, ?, ?, ?, ?)`,
-              [effectiveStoreId, parsed.dates[i].date, row.productCode, row.productName, qty]
-            );
-            ordersCount++;
+    await db.transactionWithUser(
+      user.id,
+      effectiveStoreId,
+      user.role,
+      async (txDb) => {
+        for (const d of parsed.dates) {
+          await txDb.run(`DELETE FROM store_sales_orders WHERE store_id = ? AND order_date = ?`, [
+            effectiveStoreId,
+            d.date,
+          ]);
+        }
+        for (const row of rows) {
+          for (let i = 0; i < parsed.dates.length; i++) {
+            const qty = row.quantities[i];
+            if (qty >= 1) {
+              await txDb.run(
+                `INSERT INTO store_sales_orders (store_id, order_date, product_code, product_name, quantity)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [effectiveStoreId, parsed.dates[i].date, row.productCode, row.productName, qty]
+              );
+              ordersCount++;
+            }
           }
         }
-      }
-    });
+      },
+      tenantId
+    );
 
     return NextResponse.json({
       success: true,

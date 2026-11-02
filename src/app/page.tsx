@@ -402,38 +402,38 @@ export default function Home() {
 
       {/* ===== オーダー表 取込内容の確認モーダル ===== */}
       {preview && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">オーダー表の読み込み内容を確認</h3>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 {preview.rows.length}品目 / {preview.dates.length}日分（販売商品マスタに登録済みで、いずれかの日のオーダーが1以上の商品のみ）
               </p>
               {preview.existingDates.length > 0 && (
-                <p className="mt-2 text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <p className="mt-2 text-sm font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">
                   ⚠ すでにオーダーが登録されている日があります（
                   {preview.dates.filter(d => preview.existingDates.includes(d.date)).map(d => d.label).join('、')}
                   ）。登録実行すると上書きされます。
                 </p>
               )}
               {preview.skippedProductsCount > 0 && (
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   ※販売商品マスタに未登録のためスキップした商品: {preview.skippedProductsCount}品目
                 </p>
               )}
               {preview.warnings.map((w, i) => (
-                <p key={i} className="mt-2 text-xs text-amber-700">※{w}</p>
+                <p key={i} className="mt-2 text-xs text-amber-700 dark:text-amber-400">※{w}</p>
               ))}
             </div>
 
             <div className="overflow-auto flex-1 p-4">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-700">
+              <table className="w-full text-sm border-collapse text-slate-800 dark:text-slate-100">
+                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs">
                   <tr>
-                    <th className="border px-2 py-1.5 text-left whitespace-nowrap">商品コード</th>
-                    <th className="border px-2 py-1.5 text-left whitespace-nowrap">商品名</th>
+                    <th className="border border-slate-300 dark:border-slate-700 px-3 py-2 text-left whitespace-nowrap font-semibold">商品コード</th>
+                    <th className="border border-slate-300 dark:border-slate-700 px-3 py-2 text-left whitespace-nowrap font-semibold">商品名</th>
                     {preview.dates.map(d => (
-                      <th key={d.date} className="border px-2 py-1.5 text-right whitespace-nowrap">
+                      <th key={d.date} className="border border-slate-300 dark:border-slate-700 px-3 py-2 text-right whitespace-nowrap font-semibold">
                         オーダー数量（{d.label}）
                       </th>
                     ))}
@@ -441,11 +441,13 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {preview.rows.map(r => (
-                    <tr key={r.productCode} className="odd:bg-white even:bg-slate-50 dark:odd:bg-slate-800 dark:even:bg-slate-700/50">
-                      <td className="border px-2 py-1 whitespace-nowrap">{r.productCode}</td>
-                      <td className="border px-2 py-1 whitespace-nowrap">{r.productName}</td>
+                    <tr key={r.productCode} className="odd:bg-white even:bg-slate-50 dark:odd:bg-slate-900 dark:even:bg-slate-800/80 hover:bg-amber-50/50 dark:hover:bg-slate-800 transition-colors">
+                      <td className="border border-slate-300 dark:border-slate-700 px-3 py-1.5 whitespace-nowrap font-mono text-slate-600 dark:text-slate-300">{r.productCode}</td>
+                      <td className="border border-slate-300 dark:border-slate-700 px-3 py-1.5 whitespace-nowrap font-medium text-slate-900 dark:text-slate-100">{r.productName}</td>
                       {r.quantities.map((q, i) => (
-                        <td key={i} className="border px-2 py-1 text-right tabular-nums font-bold">{q > 0 ? q : ''}</td>
+                        <td key={i} className="border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-right tabular-nums font-bold text-slate-900 dark:text-emerald-400">
+                          {q > 0 ? q : ''}
+                        </td>
                       ))}
                     </tr>
                   ))}
@@ -453,12 +455,12 @@ export default function Home() {
               </table>
             </div>
 
-            <div className="p-4 border-t flex justify-end gap-3">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
               <button
                 type="button"
                 onClick={closePreview}
                 disabled={isImporting}
-                className="px-5 py-3 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold disabled:opacity-50"
+                className="px-5 py-3 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold disabled:opacity-50 transition-colors"
               >
                 キャンセル
               </button>
@@ -466,7 +468,7 @@ export default function Home() {
                 type="button"
                 onClick={handleCommitImport}
                 disabled={isImporting}
-                className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 flex items-center gap-2"
+                className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 flex items-center gap-2 shadow-md transition-colors"
               >
                 {isImporting && <Loader2 className="w-4 h-4 animate-spin" />}
                 登録実行
