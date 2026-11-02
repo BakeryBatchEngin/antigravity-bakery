@@ -17,6 +17,9 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
           <Link href="/super-admin/tenants" className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-slate-800 transition text-slate-300 hover:text-white">
             <span>🏢</span> テナント（会社）管理
           </Link>
+          <Link href="/super-admin/stores" className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-slate-800 transition text-slate-300 hover:text-white">
+            <span>🏪</span> 店舗管理
+          </Link>
           <Link href="/super-admin/users" className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-slate-800 transition text-slate-300 hover:text-white">
             <span>👥</span> ユーザー管理
           </Link>

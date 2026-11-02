@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 const PLAN_LABELS: Record<string, string> = {
   basic: 'ベーシック',
@@ -125,11 +126,26 @@ export default function TenantsClient({ tenants: initialTenants }: { tenants: Te
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded text-xs font-bold ${st.color}`}>{st.label}</span>
                       </td>
-                      <td className="p-4 text-center font-bold text-slate-700">{t.store_count}</td>
+                      <td className="p-4 text-center">
+                        <Link
+                          href="/super-admin/stores"
+                          className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800 hover:underline px-2.5 py-1 rounded bg-indigo-50 border border-indigo-100"
+                          title="店舗管理画面へ移動"
+                        >
+                          <span>🏪</span>
+                          <span>{t.store_count} 店舗</span>
+                        </Link>
+                      </td>
                       <td className="p-4 text-center font-bold text-slate-700">{t.user_count}</td>
                       <td className="p-4 text-slate-500 text-xs">{new Date(t.created_at).toLocaleDateString('ja-JP')}</td>
                       <td className="p-4">
                         <div className="flex gap-2">
+                          <Link
+                            href="/super-admin/stores"
+                            className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 rounded font-bold border border-amber-200 transition"
+                          >
+                            ＋ 店舗管理
+                          </Link>
                           <button onClick={() => openEdit(t)} className="px-3 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded font-medium transition">編集</button>
                           <button onClick={() => setDeleteConfirm(t)} className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded font-medium transition">削除</button>
                         </div>
@@ -186,7 +202,7 @@ export default function TenantsClient({ tenants: initialTenants }: { tenants: Te
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">状態</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">ステータス</label>
                 <select
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   value={modal.data.status || 'active'}
@@ -198,12 +214,14 @@ export default function TenantsClient({ tenants: initialTenants }: { tenants: Te
                 </select>
               </div>
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-              <button onClick={closeModal} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition">キャンセル</button>
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+              <button onClick={closeModal} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm hover:bg-slate-100 transition">
+                キャンセル
+              </button>
               <button
                 onClick={handleSave}
                 disabled={loading}
-                className="px-6 py-2 text-sm bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50 shadow"
               >
                 {loading ? '保存中...' : '保存する'}
               </button>
@@ -214,18 +232,23 @@ export default function TenantsClient({ tenants: initialTenants }: { tenants: Te
 
       {/* 削除確認モーダル */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">本当に削除しますか？</h3>
-            <p className="text-sm text-slate-500 mb-6">「{deleteConfirm.tenant_name}」を削除します。この操作は元に戻せません。</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <h4 className="text-lg font-bold text-slate-800">テナントの削除確認</h4>
+            <p className="text-sm text-slate-600">
+              「<span className="font-semibold text-slate-900">{deleteConfirm.tenant_name}</span>（{deleteConfirm.tenant_code}）」を本当に削除しますか？<br />
+              <span className="text-xs text-red-500 mt-1 block">※所属する全店舗・ユーザー・データが削除されます。</span>
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm hover:bg-slate-100 transition">
+                キャンセル
+              </button>
               <button
                 onClick={() => handleDelete(deleteConfirm)}
                 disabled={loading}
-                className="px-4 py-2 text-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50 shadow"
               >
-                削除する
+                {loading ? '削除中...' : '削除する'}
               </button>
             </div>
           </div>

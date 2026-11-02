@@ -14,13 +14,13 @@ async function getUser() {
   }
 }
 
-// 店舗一覧の取得（自分のテナントの店舗のみ）
+// 店舗一覧の取得（自分のテナントの店舗のみ、super_adminは全店舗）
 export async function GET() {
   try {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     let stores;
     if (user.role === 'super_admin') {
@@ -51,11 +51,16 @@ export async function GET() {
   }
 }
 
-// 店舗の新規作成（自分のテナントの店舗として作成）
+// 店舗の新規作成（admin または super_admin のみ許可）
 export async function POST(request: Request) {
   try {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
+    // 権限チェック：店舗作成は管理者(admin)またはスーパー管理者(super_admin)のみ
+    if (user.role !== 'admin' && user.role !== 'super_admin') {
+      return NextResponse.json({ error: '店舗を新規追加する権限がありません' }, { status: 403 });
+    }
 
     const data = await request.json();
     const { store_code, store_name } = data;
@@ -64,20 +69,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '店舗コードと店舗名が必要です' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
+    const normalizedCode = store_code.trim().toUpperCase();
 
     // 店舗コードの重複チェック
-    const existingStore = await db.get(`SELECT id FROM stores WHERE store_code = ?`, [store_code]);
+    const existingStore = await db.get(`SELECT id FROM stores WHERE store_code = ?`, [normalizedCode]);
     if (existingStore) {
-      return NextResponse.json({ error: 'この店舗コードは既に使用されています' }, { status: 400 });
+      return NextResponse.json({ error: 'この店舗コードは既に使用されています' }, { status: 409 });
     }
 
-    // super_admin はリクエストボディのtenant_idを使用、それ以外は自分のtenant_id
+    // super_admin は指定テナント、それ以外は自分のテナントに自動所属
     const tenantId = user.role === 'super_admin' ? (data.tenant_id || null) : user.tenant_id;
+
+    if (!tenantId && user.role !== 'super_admin') {
+      return NextResponse.json({ error: '所属会社（テナント）が設定されていません' }, { status: 400 });
+    }
 
     await db.run(
       `INSERT INTO stores (store_code, store_name, tenant_id) VALUES (?, ?, ?)`,
-      [store_code, store_name, tenantId]
+      [normalizedCode, store_name.trim(), tenantId]
     );
 
     return NextResponse.json({ success: true });
@@ -87,11 +97,15 @@ export async function POST(request: Request) {
   }
 }
 
-// 店舗の更新
+// 店舗の更新（admin または super_admin のみ許可）
 export async function PUT(request: Request) {
   try {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
+    if (user.role !== 'admin' && user.role !== 'super_admin') {
+      return NextResponse.json({ error: '店舗情報を編集する権限がありません' }, { status: 403 });
+    }
 
     const data = await request.json();
     const { id, store_code, store_name } = data;
@@ -100,7 +114,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 });
     }
 
-    const db = await getDb();
+    const db = await getDb(user);
+    const normalizedCode = store_code.trim().toUpperCase();
 
     // 自分のテナントの店舗かチェック（super_adminは全店舗OK）
     if (user.role !== 'super_admin') {
@@ -110,14 +125,14 @@ export async function PUT(request: Request) {
       }
     }
 
-    const existingStore = await db.get(`SELECT id FROM stores WHERE store_code = ? AND id != ?`, [store_code, id]);
+    const existingStore = await db.get(`SELECT id FROM stores WHERE store_code = ? AND id != ?`, [normalizedCode, id]);
     if (existingStore) {
-      return NextResponse.json({ error: 'この店舗コードは他の店舗で使用されています' }, { status: 400 });
+      return NextResponse.json({ error: 'この店舗コードは他の店舗で使用されています' }, { status: 409 });
     }
 
     await db.run(
       `UPDATE stores SET store_code = ?, store_name = ? WHERE id = ?`,
-      [store_code, store_name, id]
+      [normalizedCode, store_name.trim(), id]
     );
 
     return NextResponse.json({ success: true });
@@ -127,18 +142,22 @@ export async function PUT(request: Request) {
   }
 }
 
-// 店舗の削除
+// 店舗の削除（admin または super_admin のみ許可）
 export async function DELETE(request: Request) {
   try {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+
+    if (user.role !== 'admin' && user.role !== 'super_admin') {
+      return NextResponse.json({ error: '店舗を削除する権限がありません' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (!id) return NextResponse.json({ error: '店舗IDが必要です' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     // 自分のテナントの店舗かチェック
     if (user.role !== 'super_admin') {
