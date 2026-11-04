@@ -1,24 +1,16 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
 export async function POST(request: Request) {
   try {
     const { date, batches } = await request.json();
     if (!date || !batches || !Array.isArray(batches)) {
-        return NextResponse.json({ error: 'データが不足しています' }, { status: 400 });
+      return NextResponse.json({ error: 'データが不足しています' }, { status: 400 });
     }
     
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
-    const user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       console.time('bulk_execute_check');
@@ -73,6 +65,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   } catch(error) {
     console.error('Error executing bulk batch:', error);
-    return NextResponse.json({ error: '一括実行記録に失敗しました' }, { status: 500 });
+    return NextResponse.json({ error: 'バッチの一括実行記録に失敗しました' }, { status: 500 });
   }
 }

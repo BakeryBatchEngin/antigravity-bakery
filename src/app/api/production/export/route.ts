@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 import ExcelJS from 'exceljs';
 
 // タイムゾーンによるパースの違いを吸収して JST フォーマット文字列を返す関数
@@ -42,44 +41,9 @@ export async function GET(request: Request) {
     const date = searchParams.get('date');
     if (!date) return NextResponse.json({ error: 'date parameter is required' }, { status: 400 });
 
-    // ===== 関所ロジック：セッションと店舗権限をチェックする =====
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) {
-      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
-    }
-
-    let user: any;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch (e) {
-      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
-    }
-
-    const db = await getDb();
-    const storeCookie = cookieStore.get('active_store_id');
-    const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
-    let storeId: number | null = null;
-
-    if (['admin', 'master', 'manager'].includes(user.role)) {
-      storeId = requestedStoreId;
-    } else if (user.role === 'chef') {
-      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
-      if (!userStores || userStores.length === 0) {
-        return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
-      }
-      const allowedStoreIds = userStores.map((row: any) => Number(row.store_id));
-      if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
-        storeId = requestedStoreId;
-      } else {
-        storeId = allowedStoreIds[0];
-      }
-    } else {
-      return NextResponse.json({ error: 'アクセス権限がありません' }, { status: 403 });
-    }
-
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-    // ===== 関所ここまで =====
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
 
     // 確定プランを取得（store_id でも絞り込み）
     const savedPlanRow = await db.get(`SELECT plan_data FROM daily_production_plans WHERE target_date = ? AND store_id = ?`, [date, storeId]);

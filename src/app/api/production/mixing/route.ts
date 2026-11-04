@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
 export async function POST(request: Request) {
   try {
@@ -9,16 +8,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'データが不足しています' }, { status: 400 });
     }
     
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
-    const user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       await txDb.run(`
@@ -45,16 +37,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'パラメータが不足しています' }, { status: 400 });
     }
     
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
-    const user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
     
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
       await txDb.run('DELETE FROM batch_executions WHERE store_id = ? AND target_date = ? AND batch_id = ?', [storeId, date, batchId]);

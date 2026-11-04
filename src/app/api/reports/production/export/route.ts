@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import ExcelJS from 'exceljs';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 import { GET as getProduction } from '../route';
 
 export async function GET(request: Request) {
@@ -9,10 +9,9 @@ export async function GET(request: Request) {
     const month = searchParams.get('month'); // e.g., '2026-03'
     if (!month) return NextResponse.json({ error: 'month parameter is required' }, { status: 400 });
 
-    const cookieStore = await cookies();
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { storeId } = auth;
 
     // Call the GET function to get the records
     const dummyUrl = new URL(request.url);

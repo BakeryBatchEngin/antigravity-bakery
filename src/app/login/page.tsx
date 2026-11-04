@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import LoadingSpinner from "@/components/LoadingSpinner";
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -16,13 +15,8 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [passwordOrPin, setPasswordOrPin] = useState('');
   const [error, setError] = useState('');
-  const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,17 +49,6 @@ export default function LoginPage() {
     }
   };
 
-  if (!mounted) {
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center ${bgClass} p-4`}>
-        <div className="w-full max-w-md text-center">
-          <h1 className={`text-3xl font-extrabold ${textClass} tracking-tight mb-8`}>Bakery Batch Engine</h1>
-          <div className="scale-75"><LoadingSpinner /></div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center ${bgClass} p-4 sm:p-6`}>
       <div className="w-full max-w-md">
@@ -81,7 +64,6 @@ export default function LoginPage() {
         </div>
 
         {/* ログインフォーム */}
-        {/* 背景を黒っぽい色(bg-slate-900)に同化させ、ボーダーでわずかに区切るか、影だけで浮かせる */}
         <div className={`rounded-3xl overflow-hidden p-8 sm:p-10 border shadow-xl ${formCardClass}`}>
           
           {error && (
@@ -146,7 +128,7 @@ export default function LoginPage() {
         {/* バージョン表示 */}
         <div className="text-center mt-10">
           <p className="text-slate-500 text-sm font-medium">
-            Ver. 5.01
+            Ver. 5.08
           </p>
         </div>
 

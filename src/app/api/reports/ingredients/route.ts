@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
 export async function GET(request: Request) {
   try {
@@ -10,26 +9,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '月が指定されていません' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-
-    // セッション認証
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie?.value) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
-    let user: any;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch {
-      return NextResponse.json({ error: '無効なセッション' }, { status: 401 });
-    }
-
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-
-    if (!storeId) {
-      return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-    }
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { storeId, db } = auth;
     
     // 月間集計：材料ごとの合計使用量と原価
     const totals = await db.all(`

@@ -16,7 +16,7 @@ export async function GET() {
     const user = await getUser();
     if (!user) return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 
-    const db = await getDb();
+    const db = await getDb(user);
 
     let wipRows;
     let wipIngRows;
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
-    const db = await getDb();
+    const db = await getDb(user);
 
     await db.transaction(async (txDb) => {
       // 既存データの削除（洗い替え）
@@ -153,7 +153,7 @@ export async function DELETE(request: Request) {
     const code = searchParams.get('id');
     if (!code) return NextResponse.json({ error: '仕掛品コードが指定されていません' }, { status: 400 });
 
-    const db = await getDb();
+    const db = await getDb(user);
     const tenantId = user.role === 'super_admin' ? null : user.tenant_id;
 
     // 他マスタ（生地、商品、他の仕掛品）で使用されているかチェック

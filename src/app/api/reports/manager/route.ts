@@ -20,7 +20,7 @@ async function getManagerAuth() {
     return { error: 'マネージャー権限が必要です', status: 403 };
   }
 
-  const db = await getDb();
+  const db = await getDb(user);
   return { user, db };
 }
 
@@ -54,8 +54,10 @@ export async function GET(request: Request) {
 
     // アクセス可能な店舗を取得（admin は全店、manager は担当店舗のみ）
     let storeList: any[];
-    if (user.role === 'admin') {
+    if (user.role === 'super_admin' || user.tenant_id === null) {
       storeList = await db.all('SELECT id, store_code, store_name FROM stores ORDER BY store_code ASC');
+    } else if (user.role === 'admin') {
+      storeList = await db.all('SELECT id, store_code, store_name FROM stores WHERE tenant_id = ? ORDER BY store_code ASC', [user.tenant_id]);
     } else {
       // manager は user_stores テーブルで担当店舗を特定
       storeList = await db.all(`

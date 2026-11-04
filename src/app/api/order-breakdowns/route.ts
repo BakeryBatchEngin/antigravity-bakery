@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
 /**
  * GET: 指定した日付・商品コードの発注元内訳を取得する
@@ -19,44 +18,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // ===== 関所ロジック：セッションと店舗権限をチェックする =====
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) {
-      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
-    }
-
-    let user: any;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch (e) {
-      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
-    }
-
-    const db = await getDb();
-    const storeCookie = cookieStore.get('active_store_id');
-    const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
-    let storeId: number | null = null;
-
-    if (['admin', 'master', 'manager'].includes(user.role)) {
-      storeId = requestedStoreId;
-    } else if (user.role === 'chef') {
-      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
-      if (!userStores || userStores.length === 0) {
-        return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
-      }
-      const allowedStoreIds = userStores.map((row: any) => Number(row.store_id));
-      if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
-        storeId = requestedStoreId;
-      } else {
-        storeId = allowedStoreIds[0];
-      }
-    } else {
-      return NextResponse.json({ error: 'アクセス権限がありません' }, { status: 403 });
-    }
-
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-    // ===== 関所ここまで =====
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
 
     const rows = await db.all(
       `SELECT display_name, customer_name, dept_name, quantity
@@ -98,44 +62,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '日付データが含まれていません' }, { status: 400 });
     }
 
-    // ===== 関所ロジック：セッションと店舗権限をチェックする =====
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    if (!sessionCookie || !sessionCookie.value) {
-      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
-    }
-
-    let user: any;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch (e) {
-      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
-    }
-
-    const db = await getDb();
-    const storeCookie = cookieStore.get('active_store_id');
-    const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
-    let storeId: number | null = null;
-
-    if (['admin', 'master', 'manager'].includes(user.role)) {
-      storeId = requestedStoreId;
-    } else if (user.role === 'chef') {
-      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
-      if (!userStores || userStores.length === 0) {
-        return NextResponse.json({ error: '所属店舗が設定されていません。管理者に連絡してください。' }, { status: 403 });
-      }
-      const allowedStoreIds = userStores.map((row: any) => Number(row.store_id));
-      if (requestedStoreId !== null && allowedStoreIds.includes(requestedStoreId)) {
-        storeId = requestedStoreId;
-      } else {
-        storeId = allowedStoreIds[0];
-      }
-    } else {
-      return NextResponse.json({ error: 'アクセス権限がありません' }, { status: 403 });
-    }
-
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-    // ===== 関所ここまで =====
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, storeId, db } = auth;
 
     let count = 0;
 

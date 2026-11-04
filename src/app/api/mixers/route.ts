@@ -1,40 +1,10 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
-// ===== 共通：関所ロジック（セッションと店舗IDを取得） =====
 async function getStoreId() {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('bakery_session');
-  if (!sessionCookie?.value) return { error: 'ログインが必要です', status: 401 };
-
-  let user: any;
-  try {
-    user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-  } catch {
-    return { error: '無効なセッションです', status: 401 };
-  }
-
-  const db = await getDb();
-  const storeCookie = cookieStore.get('active_store_id');
-  const requestedStoreId = storeCookie ? Number(storeCookie.value) : null;
-  let storeId: number | null = null;
-
-  if (['admin', 'master', 'manager'].includes(user.role)) {
-    storeId = requestedStoreId;
-  } else if (user.role === 'chef') {
-    const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = ?', [user.id]);
-    if (!userStores || userStores.length === 0) {
-      return { error: '所属店舗が設定されていません', status: 403 };
-    }
-    const allowedIds = userStores.map((r: any) => Number(r.store_id));
-    storeId = (requestedStoreId && allowedIds.includes(requestedStoreId)) ? requestedStoreId : allowedIds[0];
-  } else {
-    return { error: 'アクセス権限がありません', status: 403 };
-  }
-
-  if (!storeId) return { error: '店舗が選択されていません', status: 400 };
-  return { storeId, db };
+  const auth = await resolveStoreAuth();
+  if (auth.errorResponse) return { error: '認証エラーまたは店舗未選択', status: auth.errorResponse.status };
+  return { storeId: auth.storeId, db: auth.db };
 }
 
 // GET: 選択中の店舗のミキサー一覧を取得

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 
 const MIXER_LIMIT_G = 50000; // 50kg
 
@@ -11,21 +10,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '商品コードと個数が必要です' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('bakery_session');
-    
-    if (!sessionCookie || !sessionCookie.value) {
-      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
-    }
-
-    let user;
-    try {
-      user = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
-    } catch (e) {
-      return NextResponse.json({ error: '無効なセッションです' }, { status: 401 });
-    }
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { user, db } = auth;
     
     // 該当商品の情報を取得
     const product = await db.get('SELECT product_code, product_name FROM products WHERE product_code = ? AND tenant_id = ?', [productCode, user.tenant_id]);
@@ -49,7 +36,7 @@ export async function POST(request: Request) {
     const generatedDoughBatches = [];
     const generatedProductBatches = [];
 
-        // --- Dough ---
+    // --- Dough ---
     let doughIndex = 1;
     for (const pd of doughsForProduct) {
       const totalAmountToMix = pd.dough_amount * quantity;
@@ -59,11 +46,11 @@ export async function POST(request: Request) {
       if (subDough) {
         // Sub-dough
         const subIngs = await db.all('SELECT * FROM sub_dough_ingredients WHERE dough_id = ? AND tenant_id = ?', [pd.dough_code, user.tenant_id]);
-          subIngs.sort((a: any, b: any) => {
-            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
-            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
-            return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
-          });
+        subIngs.sort((a: any, b: any) => {
+          if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+          if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+          return (b.ingredient_amount || 0) - (a.ingredient_amount || 0);
+        });
         const recipeTotalGrams = subDough.base_dough_amount + subIngs.reduce((sum: number, item: any) => sum + item.ingredient_amount, 0);
         const totalBakersPercent = subIngs.reduce((sum: number, item: any) => sum + ((item.ingredient_amount / subDough.base_dough_amount) * 100), 0) + 100;
         
@@ -109,12 +96,12 @@ export async function POST(request: Request) {
           SELECT d.ingredient_code, d.ingredient_name, d.bakers_percent, d.dough_name
           FROM doughs d
           WHERE d.dough_id = ? AND d.tenant_id = ?
-          `, [subDough.base_dough_id, user.tenant_id]);
-          recipeIngredients.sort((a: any, b: any) => {
-            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
-            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
-            return (b.bakers_percent || 0) - (a.bakers_percent || 0);
-          });
+        `, [subDough.base_dough_id, user.tenant_id]);
+        recipeIngredients.sort((a: any, b: any) => {
+          if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+          if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+          return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+        });
 
         if (recipeIngredients.length > 0) {
           const baseLatestName = recipeIngredients[0].dough_name || subDough.base_dough_name;
@@ -161,12 +148,12 @@ export async function POST(request: Request) {
           SELECT d.ingredient_code, d.ingredient_name, d.bakers_percent, d.dough_name
           FROM doughs d
           WHERE d.dough_id = ? AND d.tenant_id = ?
-          `, [pd.dough_code, user.tenant_id]);
-          recipeIngredients.sort((a: any, b: any) => {
-            if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
-            if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
-            return (b.bakers_percent || 0) - (a.bakers_percent || 0);
-          });
+        `, [pd.dough_code, user.tenant_id]);
+        recipeIngredients.sort((a: any, b: any) => {
+          if (a.ingredient_name === '水' && b.ingredient_name !== '水') return 1;
+          if (a.ingredient_name !== '水' && b.ingredient_name === '水') return -1;
+          return (b.bakers_percent || 0) - (a.bakers_percent || 0);
+        });
 
         if (recipeIngredients.length === 0) continue; 
         
@@ -212,30 +199,28 @@ export async function POST(request: Request) {
 
     // --- 副材料(Product)の計算 ---
     if (productIngredients.length > 0 || doughsForProduct.length > 0) {
-      const latestDoughNames = [];
+      const latestDoughNames: string[] = [];
       for (const d of doughsForProduct) {
         const masterDough = await db.get('SELECT dough_name FROM doughs WHERE dough_id = ? AND tenant_id = ? LIMIT 1', [d.dough_code, user.tenant_id]);
         latestDoughNames.push(masterDough ? masterDough.dough_name : d.dough_name);
       }
       
+      const combinedDoughName = latestDoughNames.join(', ') || '生地なし';
+      const combinedDoughCode = doughsForProduct.map((d: any) => d.dough_code).join(', ');
       const totalDoughAmountPerItem = doughsForProduct.reduce((sum: number, d: any) => sum + d.dough_amount, 0);
-      const combinedDoughName = latestDoughNames.join(' + ') || '生地なし';
-      const combinedDoughCode = doughsForProduct.map((d: any) => d.dough_code).join('+') || '';
-      const totalSubIngredientsAmountPerItem = productIngredients.reduce((sum: number, ing: any) => sum + ing.ingredient_amount, 0);
 
-      const weightPerItem = totalDoughAmountPerItem + totalSubIngredientsAmountPerItem;
-      let maxBatchesQty = Math.floor(MIXER_LIMIT_G / weightPerItem);
-      if (maxBatchesQty < 1) maxBatchesQty = 1;
-
-      const numBatches = Math.ceil(quantity / maxBatchesQty);
-      let remainingQty = quantity;
-      const doughDetails = doughsForProduct.map((d: any) => ({
+      const doughDetails = doughsForProduct.map((d: any, idx: number) => ({
         doughCode: d.dough_code,
-        amountPerItem: d.dough_amount
+        doughName: latestDoughNames[idx] || d.dough_name,
+        doughAmount: d.dough_amount
       }));
 
+      const maxBatchesQty = 100;
+      const numProductBatches = Math.ceil(quantity / maxBatchesQty);
+      let remainingQty = quantity;
       let productBatchIndex = 1;
-      for (let i = 0; i < numBatches; i++) {
+
+      for (let i = 0; i < numProductBatches; i++) {
         const batchQty = Math.min(remainingQty, maxBatchesQty);
         remainingQty -= batchQty;
 

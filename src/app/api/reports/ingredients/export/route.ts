@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getDb } from '@/lib/db';
+import { resolveStoreAuth } from '@/lib/storeAuth';
 import ExcelJS from 'exceljs';
 import { GET as getProductionPlan } from '@/app/api/production/route';
 
@@ -37,12 +36,9 @@ export async function GET(request: Request) {
     const month = searchParams.get('month'); // e.g., "2026-04"
     if (!month) return NextResponse.json({ error: 'month parameter is required' }, { status: 400 });
 
-    const cookieStore = await cookies();
-    const storeCookie = cookieStore.get('active_store_id');
-    const storeId = storeCookie ? Number(storeCookie.value) : null;
-    if (!storeId) return NextResponse.json({ error: '店舗が選択されていません' }, { status: 400 });
-
-    const db = await getDb();
+    const auth = await resolveStoreAuth();
+    if (auth.errorResponse) return auth.errorResponse;
+    const { storeId, db } = auth;
     
     // 1. その月の使用量履歴を全取得
     const usages = await db.all(`
