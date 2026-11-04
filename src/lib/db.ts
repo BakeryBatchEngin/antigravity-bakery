@@ -8,6 +8,9 @@ function getPool(): Pool {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
+      max: 5, // サーバーレス環境での同時接続上限
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
     });
   }
   return pool;
@@ -50,17 +53,20 @@ export class PgCompatibleDb {
 
     const client = await getPool().connect();
     try {
-      await client.query('BEGIN');
-      const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id) : '';
-      const roleStr = this.userContext.role || '';
-      const userIdStr = this.userContext.id != null ? String(this.userContext.id) : '';
-      const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id) : '';
+      const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id).replace(/'/g, "''") : '';
+      const roleStr = (this.userContext.role || '').replace(/'/g, "''");
+      const userIdStr = this.userContext.id != null ? String(this.userContext.id).replace(/'/g, "''") : '';
+      const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id).replace(/'/g, "''") : '';
 
-      await client.query(`SET LOCAL app.current_tenant_id = '${tenantIdStr}'`);
-      await client.query(`SET LOCAL app.current_user_role = '${roleStr}'`);
-      await client.query(`SET LOCAL app.current_user_id = '${userIdStr}'`);
-      await client.query(`SET LOCAL app.current_store_id = '${storeIdStr}'`);
-      await client.query('SET LOCAL ROLE authenticated');
+      // BEGINと各セッション設定を1回のパケット送信にまとめ、DB往復回数を大幅削減
+      await client.query(`
+        BEGIN;
+        SET LOCAL app.current_tenant_id = '${tenantIdStr}';
+        SET LOCAL app.current_user_role = '${roleStr}';
+        SET LOCAL app.current_user_id = '${userIdStr}';
+        SET LOCAL app.current_store_id = '${storeIdStr}';
+        SET LOCAL ROLE authenticated;
+      `);
 
       const res = await action(client);
       await client.query('COMMIT');
@@ -111,19 +117,22 @@ export class PgCompatibleDb {
   async transaction(callback: (txDb: { get: Function, all: Function, run: Function }) => Promise<any>) {
     const client = await getPool().connect();
     try {
-      await client.query('BEGIN');
-
       if (this.userContext) {
-        const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id) : '';
-        const roleStr = this.userContext.role || '';
-        const userIdStr = this.userContext.id != null ? String(this.userContext.id) : '';
-        const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id) : '';
+        const tenantIdStr = this.userContext.tenant_id != null ? String(this.userContext.tenant_id).replace(/'/g, "''") : '';
+        const roleStr = (this.userContext.role || '').replace(/'/g, "''");
+        const userIdStr = this.userContext.id != null ? String(this.userContext.id).replace(/'/g, "''") : '';
+        const storeIdStr = this.userContext.store_id != null ? String(this.userContext.store_id).replace(/'/g, "''") : '';
 
-        await client.query(`SET LOCAL app.current_tenant_id = '${tenantIdStr}'`);
-        await client.query(`SET LOCAL app.current_user_role = '${roleStr}'`);
-        await client.query(`SET LOCAL app.current_user_id = '${userIdStr}'`);
-        await client.query(`SET LOCAL app.current_store_id = '${storeIdStr}'`);
-        await client.query('SET LOCAL ROLE authenticated');
+        await client.query(`
+          BEGIN;
+          SET LOCAL app.current_tenant_id = '${tenantIdStr}';
+          SET LOCAL app.current_user_role = '${roleStr}';
+          SET LOCAL app.current_user_id = '${userIdStr}';
+          SET LOCAL app.current_store_id = '${storeIdStr}';
+          SET LOCAL ROLE authenticated;
+        `);
+      } else {
+        await client.query('BEGIN');
       }
       
       // トランザクション専用の互換オブジェクトを作成
@@ -166,8 +175,6 @@ export class PgCompatibleDb {
   ) {
     const client = await getPool().connect();
     try {
-      await client.query('BEGIN');
-      
       // テナントIDの決定（引数 > インスタンスのuserContext > storeIdからの解決）
       let effectiveTenantId = tenantId !== undefined ? tenantId : (this.userContext?.tenant_id ?? null);
       if (effectiveTenantId === null && storeId) {
@@ -177,31 +184,19 @@ export class PgCompatibleDb {
         }
       }
 
-      if (effectiveTenantId != null) {
-        await client.query(`SET LOCAL app.current_tenant_id = '${effectiveTenantId}'`);
-      } else {
-        await client.query(`SET LOCAL app.current_tenant_id = ''`);
-      }
+      const tenantIdStr = effectiveTenantId != null ? String(effectiveTenantId).replace(/'/g, "''") : '';
+      const userIdStr = userId ? String(userId).replace(/'/g, "''") : '';
+      const storeIdStr = storeId ? String(storeId).replace(/'/g, "''") : '';
+      const roleStr = role ? String(role).replace(/'/g, "''") : '';
 
-      if (userId) {
-        await client.query(`SET LOCAL app.current_user_id = '${userId}'`);
-      } else {
-        await client.query(`SET LOCAL app.current_user_id = ''`);
-      }
-      
-      if (storeId) {
-        await client.query(`SET LOCAL app.current_store_id = '${storeId}'`);
-      } else {
-        await client.query(`SET LOCAL app.current_store_id = ''`);
-      }
-
-      if (role) {
-        await client.query(`SET LOCAL app.current_user_role = '${role}'`);
-      } else {
-        await client.query(`SET LOCAL app.current_user_role = ''`);
-      }
-
-      await client.query('SET LOCAL ROLE authenticated');
+      await client.query(`
+        BEGIN;
+        SET LOCAL app.current_tenant_id = '${tenantIdStr}';
+        SET LOCAL app.current_user_id = '${userIdStr}';
+        SET LOCAL app.current_store_id = '${storeIdStr}';
+        SET LOCAL app.current_user_role = '${roleStr}';
+        SET LOCAL ROLE authenticated;
+      `);
 
       const txDb = {
         get: async (sql: string, params: any[] = []) => {

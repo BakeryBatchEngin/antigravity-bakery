@@ -103,15 +103,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // すでにオーダーが登録されている日付を調べる（上書き確認用）
-    const existingDates: string[] = [];
-    for (const d of parsed.dates) {
-      const found = await db.get(
-        `SELECT 1 AS found FROM store_sales_orders WHERE store_id = ? AND order_date = ? LIMIT 1`,
-        [effectiveStoreId, d.date]
-      );
-      if (found) existingDates.push(d.date);
-    }
+    // すでにオーダーが登録されている日付を調べる（上書き確認用：1回のクエリで一括取得）
+    const dateStrings = parsed.dates.map(d => d.date);
+    const datePlaceholders = dateStrings.map(() => '?').join(',');
+    const foundRows = (await db.all(
+      `SELECT DISTINCT order_date FROM store_sales_orders WHERE store_id = ? AND order_date IN (${datePlaceholders})`,
+      [effectiveStoreId, ...dateStrings]
+    )) as { order_date: string }[];
+    const existingDates: string[] = (foundRows || []).map(r => r.order_date);
 
     if (mode === 'preview') {
       return NextResponse.json({
@@ -125,30 +124,43 @@ export async function POST(req: Request) {
       });
     }
 
-    // ---- 登録（Excelに載っている日付分だけ入れ替え） ----
+    // ---- 登録（Excelに載っている日付分だけ入れ替え：一括削除 & チャンク一括INSERT） ----
     let ordersCount = 0;
     await db.transactionWithUser(
       user.id,
       effectiveStoreId,
       user.role,
       async (txDb) => {
-        for (const d of parsed.dates) {
-          await txDb.run(`DELETE FROM store_sales_orders WHERE store_id = ? AND order_date = ?`, [
-            effectiveStoreId,
-            d.date,
-          ]);
-        }
+        // 1. 対象日の既存オーダーを1回のクエリで一括削除
+        await txDb.run(
+          `DELETE FROM store_sales_orders WHERE store_id = ? AND order_date IN (${datePlaceholders})`,
+          [effectiveStoreId, ...dateStrings]
+        );
+
+        // 2. 登録用データの作成
+        const toInsert: any[] = [];
         for (const row of rows) {
           for (let i = 0; i < parsed.dates.length; i++) {
             const qty = row.quantities[i];
             if (qty >= 1) {
-              await txDb.run(
-                `INSERT INTO store_sales_orders (store_id, order_date, product_code, product_name, quantity)
-                 VALUES (?, ?, ?, ?, ?)`,
-                [effectiveStoreId, parsed.dates[i].date, row.productCode, row.productName, qty]
-              );
+              toInsert.push([effectiveStoreId, parsed.dates[i].date, row.productCode, row.productName, qty]);
               ordersCount++;
             }
+          }
+        }
+
+        // 3. チャンク一括INSERT（N+1往復を根絶）
+        if (toInsert.length > 0) {
+          const chunkSize = 100;
+          for (let i = 0; i < toInsert.length; i += chunkSize) {
+            const chunk = toInsert.slice(i, i + chunkSize);
+            const valuePlaceholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+            const flatValues = chunk.flat();
+            await txDb.run(
+              `INSERT INTO store_sales_orders (store_id, order_date, product_code, product_name, quantity)
+               VALUES ${valuePlaceholders}`,
+              flatValues
+            );
           }
         }
       },
