@@ -176,6 +176,7 @@ export default function WasteCountPage() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingTargets, setIsLoadingTargets] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // コメント入力モーダル用の状態
@@ -262,6 +263,7 @@ export default function WasteCountPage() {
     setSavedSnapshot('');
 
     const fetchTargets = async () => {
+      setIsLoadingTargets(true);
       try {
         const res = await fetch(`/api/waste/targets?date=${targetDate}`);
         const data = await res.json();
@@ -278,6 +280,8 @@ export default function WasteCountPage() {
         }
       } catch (err) {
         console.error(err);
+      } finally {
+        setIsLoadingTargets(false);
       }
     };
     fetchTargets();
@@ -643,13 +647,18 @@ export default function WasteCountPage() {
 
         {/* 商品一覧（上段: 商品名・発注数 / 下段: 操作系 の2段レイアウト） */}
         <div className="space-y-1.5">
-          {records.length === 0 && (
+          {isLoadingTargets ? (
+            <div className="bg-white rounded-xl shadow-sm p-12 text-center text-gray-500 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <p className="font-bold text-gray-700 text-base">データを読み込み中...</p>
+              <p className="text-xs text-gray-400">本日の販売オーダーとロス情報を取得しています</p>
+            </div>
+          ) : records.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-500">
               この日の販売オーダーが見つかりません。トップ画面の「オーダー表 一括読込」でExcelを取り込んでください。
             </div>
-          )}
-
-          {records.map((record, idx) => {
+          ) : (
+            records.map((record, idx) => {
             const isAiCounted = aiDetectedCodes.has(record.productCode);
             const style = getCategoryStyle(record.category, record.productCode);
             return (
@@ -819,7 +828,7 @@ export default function WasteCountPage() {
                 )}
               </div>
             );
-          })}
+          }))}
         </div>
       </main>
 
