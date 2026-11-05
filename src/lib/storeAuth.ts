@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getDb, PgCompatibleDb } from '@/lib/db';
 import type { SessionUser } from '@/lib/session';
+import { verifySession } from '@/lib/authCrypto';
 
 export type StoreAuthSuccess = {
   user: SessionUser;
@@ -45,6 +46,8 @@ export async function resolveStoreAuth(
 
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('bakery_session');
+  const sigCookie = cookieStore.get('bakery_session_sig');
+
   if (!sessionCookie?.value) {
     return {
       user: null,
@@ -52,6 +55,19 @@ export async function resolveStoreAuth(
       db: null,
       errorResponse: NextResponse.json({ error: 'ログインが必要です' }, { status: 401 }),
     };
+  }
+
+  // 署名の検証（改ざん検知）
+  if (sigCookie?.value) {
+    const isValid = await verifySession(sessionCookie.value, sigCookie.value);
+    if (!isValid) {
+      return {
+        user: null,
+        storeId: null,
+        db: null,
+        errorResponse: NextResponse.json({ error: 'セッション署名が無効です' }, { status: 401 }),
+      };
+    }
   }
 
   let user: SessionUser;
@@ -63,6 +79,16 @@ export async function resolveStoreAuth(
       storeId: null,
       db: null,
       errorResponse: NextResponse.json({ error: '無効なセッションです' }, { status: 401 }),
+    };
+  }
+
+  // 有効期限の検証（既存セッションは猶予して通す）
+  if (user.exp && user.exp < Math.floor(Date.now() / 1000)) {
+    return {
+      user: null,
+      storeId: null,
+      db: null,
+      errorResponse: NextResponse.json({ error: 'セッションの有効期限が切れました。再度ログインしてください。' }, { status: 401 }),
     };
   }
 

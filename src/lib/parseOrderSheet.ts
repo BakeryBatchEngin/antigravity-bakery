@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 // オーダー表（Excel）の解析結果の型
 export interface ParsedOrderDate {
@@ -20,51 +20,104 @@ export interface ParsedOrderSheet {
 // 日付を横に探すときの最大幅（この列数進んでも日付が出なければ読込終了）
 const MAX_DATE_GAP = 15;
 // 商品データの開始行（1始まり: 1行目=日付, 2行目=曜日, 3行目=表題, 4行目〜データ）
-const DATA_START_ROW_INDEX = 3;
+const DATA_START_ROW_NUMBER = 4;
 
 // 見出し文字を比較用に整える（半角ｶﾅ→全角、改行・空白の除去）
 function normalizeHeader(value: unknown): string {
-  return String(value ?? '')
+  return getTextValue(value)
     .normalize('NFKC')
     .replace(/\s+/g, '');
+}
+
+// セルの値から安全に文字列を取り出す
+function getTextValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    if ('richText' in (value as any)) {
+      return (value as any).richText.map((t: any) => t.text).join('').trim();
+    }
+    if ('text' in (value as any)) {
+      return String((value as any).text ?? '').trim();
+    }
+    if ('result' in (value as any)) {
+      return String((value as any).result ?? '').trim();
+    }
+  }
+  return String(value).trim();
+}
+
+// セルの値から安全に数値を取り出す
+function getNumericValue(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'object' && value !== null && 'result' in (value as any)) {
+    const res = (value as any).result;
+    return typeof res === 'number' ? res : Number(res) || 0;
+  }
+  return Number(value) || 0;
 }
 
 // セルの値を日付（年月日）に変換。日付でなければ null
 function parseDateCell(value: unknown): { y: number; m: number; d: number } | null {
   if (value === '' || value === null || value === undefined) return null;
-  if (typeof value === 'number') {
-    // Excelのシリアル値のうち、現実的な日付範囲だけを日付とみなす
-    if (value < 20000 || value > 80000) return null;
-    const p = XLSX.SSF.parse_date_code(value);
-    if (p && p.y) return { y: p.y, m: p.m, d: p.d };
-    return null;
-  }
   if (value instanceof Date) {
     return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
   }
+  if (typeof value === 'object' && value !== null && 'result' in (value as any)) {
+    return parseDateCell((value as any).result);
+  }
+  if (typeof value === 'number') {
+    // Excelのシリアル値のうち、現実的な日付範囲（20000〜80000）だけを日付とみなす
+    if (value < 20000 || value > 80000) return null;
+    const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+    return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate() };
+  }
   const match = String(value).trim().match(/^(\d{4})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/);
-  if (match) return { y: parseInt(match[1], 10), m: parseInt(match[2], 10), d: parseInt(match[3], 10) };
+  if (match) {
+    return { y: parseInt(match[1], 10), m: parseInt(match[2], 10), d: parseInt(match[3], 10) };
+  }
   return null;
 }
 
-// 新フォーマットのオーダー表を解析する
-export function parseOrderSheet(data: Uint8Array): ParsedOrderSheet {
-  const workbook = XLSX.read(data, { type: 'array' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const grid: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+// 新フォーマットのオーダー表を解析する (ExcelJS による安全な実装)
+export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderSheet> {
+  const workbook = new ExcelJS.Workbook();
+  // Node.js Buffer に変換してロード
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  await workbook.xlsx.load(buffer as any);
 
-  const row1 = grid[0] || [];
-  const row3 = grid[2] || [];
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('ワークシートが見つかりません。');
+  }
+
+  const row1 = worksheet.getRow(1);
+  const row3 = worksheet.getRow(3);
   const warnings: string[] = [];
 
-  // 1. 1行目から日付の列位置を探す（D列から開始。15列進んでも日付が出なければ終了）
+  // 1. 1行目から日付の列位置を探す（D列=4列目から開始。15列進んでも日付が出なければ終了）
   const dateCols: { col: number; y: number; m: number; d: number }[] = [];
-  let lastDateCol = 2; // D列(index 3)の手前
-  for (let c = 3; c < row1.length + MAX_DATE_GAP; c++) {
-    const parsed = parseDateCell(row1[c]);
+  let lastDateCol = 3; // D列(4)の手前
+  const maxCol = Math.max(row1.cellCount, 50);
+
+  for (let c = 4; c <= maxCol; c++) {
+    const cell = row1.getCell(c);
+    // 結合セルのマスターセル（先頭列）以外はスキップ（ExcelJS では結合された全セルに値が返るため）
+    if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
+      continue;
+    }
+
+    const cellValue = cell.value;
+    const parsed = parseDateCell(cellValue);
     if (parsed) {
-      dateCols.push({ col: c, ...parsed });
-      lastDateCol = c;
+      const dateStr = `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+      // すでに同じ日付が登録されている場合はスキップ（二重登録防止）
+      const alreadyExists = dateCols.some(
+        d => `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` === dateStr
+      );
+      if (!alreadyExists) {
+        dateCols.push({ col: c, ...parsed });
+        lastDateCol = c;
+      }
     } else if (c - lastDateCol >= MAX_DATE_GAP) {
       break;
     }
@@ -81,9 +134,11 @@ export function parseOrderSheet(data: Uint8Array): ParsedOrderSheet {
     const start = dateCols[i].col;
     const end = i + 1 < dateCols.length ? dateCols[i + 1].col - 1 : start + MAX_DATE_GAP - 1;
     let orderCol = -1;
+
     for (let c = start; c <= end; c++) {
+      const headerText = normalizeHeader(row3.getCell(c).value);
       // 「オーダー金額」「オーダー数」などは対象外。「オーダー」のみ一致させる
-      if (normalizeHeader(row3[c]) === 'オーダー') {
+      if (headerText === 'オーダー') {
         orderCol = c;
         break;
       }
@@ -105,14 +160,18 @@ export function parseOrderSheet(data: Uint8Array): ParsedOrderSheet {
 
   // 3. A列の商品コードごとに発注数を読み取る（いずれかの日に1以上ある行のみ）
   const rows: ParsedOrderRow[] = [];
-  for (let r = DATA_START_ROW_INDEX; r < grid.length; r++) {
-    const code = String(grid[r][0] ?? '').trim();
+  const rowCount = worksheet.rowCount;
+
+  for (let r = DATA_START_ROW_NUMBER; r <= rowCount; r++) {
+    const row = worksheet.getRow(r);
+    const code = getTextValue(row.getCell(1).value);
     if (!code) continue;
 
     const quantities = orderCols.map(col => {
-      const n = Number(grid[r][col]);
+      const n = getNumericValue(row.getCell(col).value);
       return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
     });
+
     if (quantities.some(q => q >= 1)) {
       rows.push({ productCode: code, quantities });
     }

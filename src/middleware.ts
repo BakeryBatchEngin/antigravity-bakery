@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// 認証不要でアクセスできるパス（ログインAPIや画像など）
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico', '/presentation'];
+// 認証不要でアクセスできる公開パス
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/store', '/favicon.ico', '/apple-icon.png', '/presentation'];
 
-// マネージャー専用APIの許可パス（/api/reports/manager は /reports に含まれるためOK）
+// 公開静的ファイルの拡張子（APIルートは除外）
+const PUBLIC_STATIC_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 
 // ロールごとのアクセス可能パス（接頭辞）
 const ROLE_ACCESS = {
@@ -36,21 +37,26 @@ const ROLE_ACCESS = {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 静的ファイルや公開パスはスルー
-  if (
-    PUBLIC_PATHS.includes(pathname) ||
-    pathname.startsWith('/_next') ||
-    pathname.endsWith('.png') ||
-    pathname.endsWith('.jpg') ||
-    pathname.endsWith('.ai') ||
-    pathname.endsWith('.csv') ||
-    pathname.endsWith('.xlsx')
-  ) {
+  // 1. Next.js 内部リソース（_next）は無条件スルー
+  if (pathname.startsWith('/_next')) {
+    return NextResponse.next();
+  }
+
+  // 2. 公開静的ファイル（画像・ファビコンなど）のスルー（APIルートは絶対に拡張子スルーさせない）
+  if (!pathname.startsWith('/api/')) {
+    const isPublicStatic = PUBLIC_STATIC_EXTENSIONS.some(ext => pathname.toLowerCase().endsWith(ext));
+    if (isPublicStatic) {
+      return NextResponse.next();
+    }
+  }
+
+  // 3. 公開ページ・公開APIのスルー
+  if (PUBLIC_PATHS.includes(pathname)) {
     // ログイン済みユーザーが /login にアクセスした場合はトップへリダイレクト
     if (pathname === '/login') {
       const session = request.cookies.get('bakery_session');
       if (session && session.value) {
-         return NextResponse.redirect(new URL('/', request.url));
+        return NextResponse.redirect(new URL('/', request.url));
       }
     }
     return NextResponse.next();
@@ -66,7 +72,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // 署名の検証
+    // 署名の検証（定数時間比較）
     const sigCookie = request.cookies.get('bakery_session_sig');
     if (!sigCookie || !sigCookie.value) {
       throw new Error("Missing signature");
@@ -85,6 +91,11 @@ export async function middleware(request: NextRequest) {
       throw new Error("Invalid session data");
     }
 
+    // セッション有効期限（exp）の検証（移行前の既存セッションは猶予して通す）
+    if (sessionData.exp && sessionData.exp < Math.floor(Date.now() / 1000)) {
+      throw new Error("Expired session");
+    }
+
     // /super-admin/* は super_admin のみアクセス可
     if (pathname.startsWith('/super-admin') || pathname.startsWith('/api/super-admin')) {
       if (role !== 'super_admin') {
@@ -93,7 +104,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // super_admin は super-admin 以外のページは不要なのでトップへ（リダイレクト済みのはずだが念のため）
+    // super_admin は super-admin 以外のページは不要なのでトップへ
     if (role === 'super_admin') {
       return NextResponse.next();
     }
@@ -139,7 +150,7 @@ export async function middleware(request: NextRequest) {
     // 認証OK
     return NextResponse.next();
   } catch (error) {
-    // セッションデータが不正な場合はCookieを消してログインへ
+    // セッションデータが不正または期限切れの場合はCookieを消してログインへ
     const response = NextResponse.redirect(new URL('/login', request.url));
     response.cookies.delete('bakery_session');
     response.cookies.delete('bakery_session_sig');
@@ -147,16 +158,9 @@ export async function middleware(request: NextRequest) {
   }
 }
 
-// 適用するルートを限定（APIの一部やNext.js内部通信を除く）
+// 適用するルートを限定
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes) -> Except we want to protect some APIs, so we let middleware run, or we can protect APIs inside the route itself.
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!_next/static|_next/image).*)',
   ],
 };

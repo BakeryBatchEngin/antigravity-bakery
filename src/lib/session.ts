@@ -14,6 +14,9 @@ export type SessionUser = {
   username: string;
   role: string;
   tenant_id: number | null;
+  displayName?: string;
+  storeIds?: number[];
+  exp?: number; // セッション有効期限（UNIXタイムスタンプ秒）
 };
 
 export async function getSessionUser(): Promise<
@@ -36,6 +39,18 @@ export async function getSessionUser(): Promise<
     const user = JSON.parse(
       Buffer.from(sessionCookie.value, 'base64').toString('utf-8')
     ) as SessionUser;
+
+    // セッション有効期限（exp）の検証（移行前の既存セッションは猶予して通す）
+    if (user.exp && user.exp < Math.floor(Date.now() / 1000)) {
+      return {
+        user: null,
+        error: new Response(JSON.stringify({ error: 'セッションの有効期限が切れました。再度ログインしてください。' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      };
+    }
+
     return { user, error: null };
   } catch {
     return {

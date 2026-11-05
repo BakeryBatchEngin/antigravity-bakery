@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import * as xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import StatusCalendar from '@/components/StatusCalendar';
@@ -58,7 +58,7 @@ export default function OrderImportPage() {
   }, []);
   
   // ファイルのバイナリをキャッシュしておく
-  const fileContentRef = useRef<string | null>(null);
+  const fileContentRef = useRef<ArrayBuffer | null>(null);
 
   // 1. ファイル選択時の処理（シート一覧と年月の取得のみ）
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,16 +93,19 @@ export default function OrderImportPage() {
     }
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result as string;
-        fileContentRef.current = bstr;
+        const buffer = evt.target?.result as ArrayBuffer;
+        fileContentRef.current = buffer;
         
-        // シート名一覧だけを取得するため、軽く読み込む
-        const wb = xlsx.read(bstr, { type: 'binary', bookSheets: true });
+        // シート名一覧を取得
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
         
         // 数字だけのシート（または数字に近いもの）を抽出
-        const dateSheets = wb.SheetNames.filter(name => /^\d{1,2}$/.test(name.trim()));
+        const dateSheets = wb.worksheets
+          .map(ws => ws.name.trim())
+          .filter(name => /^\d{1,2}$/.test(name));
         
         if (dateSheets.length === 0) {
           setImportErrors(['ファイル内に「1」〜「31」のような日付を表すシートが見つかりませんでした。']);
@@ -117,7 +120,7 @@ export default function OrderImportPage() {
         setIsProcessing(false);
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // シートの選択切り替え
@@ -138,7 +141,7 @@ export default function OrderImportPage() {
   };
 
   // 2. 選択されたシートの解析処理
-  const handleAnalyzeSheets = () => {
+  const handleAnalyzeSheets = async () => {
     if (!fileContentRef.current || selectedSheets.length === 0) return;
     
     setIsProcessing(true);
@@ -146,27 +149,52 @@ export default function OrderImportPage() {
     setImportWarnings([]);
     
     try {
-      const wb = xlsx.read(fileContentRef.current, { type: 'binary' });
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(fileContentRef.current);
       
       let allOrders: OrderItem[] = [];
       let allBreakdowns: OrderBreakdownItem[] = [];
       let allErrors: string[] = [];
       let firstPreviewData: any[][] | null = null;
+
+      // セルから安全に値を取り出す
+      const extractVal = (cell: any): any => {
+        if (!cell || cell.value === null || cell.value === undefined) return '';
+        const v = cell.isMerged ? cell.master.value : cell.value;
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object') {
+          if ('richText' in v) return v.richText.map((t: any) => t.text).join('').trim();
+          if ('text' in v) return String(v.text ?? '').trim();
+          if ('result' in v) return v.result;
+        }
+        return v;
+      };
       
-      selectedSheets.forEach(wsname => {
+      for (const wsname of selectedSheets) {
         // 対象日の生成（YYYY-MM-DD）
         const day = wsname.trim().padStart(2, '0');
         const orderDate = `${fileYearMonth}-${day}`;
         
-        const ws = wb.Sheets[wsname];
-        const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1 });
-        const merges = ws['!merges'] || [];
+        const ws = wb.getWorksheet(wsname);
+        if (!ws) continue;
+
+        // 2次元配列を作成
+        const data: any[][] = [];
+        const maxColCount = Math.max(ws.columnCount, 30);
+        for (let r = 1; r <= ws.rowCount; r++) {
+          const row = ws.getRow(r);
+          const rowArr: any[] = [];
+          for (let c = 1; c <= maxColCount; c++) {
+            rowArr.push(extractVal(row.getCell(c)));
+          }
+          data.push(rowArr);
+        }
 
         if (!firstPreviewData && data.length > 0) {
           firstPreviewData = data;
         }
 
-        const { extracted, extractedBreakdowns, errors } = extractOrdersFromSheet(data, orderDate, merges);
+        const { extracted, extractedBreakdowns, errors } = extractOrdersFromSheet(data, orderDate, []);
         
         if (errors.length > 0) {
           allErrors.push(`シート「${wsname}日」のエラー:`);
@@ -175,7 +203,7 @@ export default function OrderImportPage() {
           allOrders.push(...extracted);
           allBreakdowns.push(...extractedBreakdowns);
         }
-      });
+      }
 
       if (firstPreviewData) {
         setDataPreview(firstPreviewData);

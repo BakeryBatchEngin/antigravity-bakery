@@ -66,7 +66,7 @@ export async function POST(req: Request) {
 
     // Excelの解析
     const data = new Uint8Array(await file.arrayBuffer());
-    const parsed = parseOrderSheet(data);
+    const parsed = await parseOrderSheet(data);
 
     // 商品マスタに存在する商品コードだけに絞り込み（同じコードが複数行あれば合算）
     const aggregated = new Map<string, { productCode: string; productName: string; quantities: number[] }>();

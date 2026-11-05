@@ -28,6 +28,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '画像が提供されていません。' }, { status: 400 });
     }
 
+    // 画像サイズの上限チェック（実データ約7.5MB相当、DoSやAPI過大請求を防止）
+    const MAX_BASE64_LENGTH = 10 * 1024 * 1024;
+    if (typeof imageBase64 === 'string' && imageBase64.length > MAX_BASE64_LENGTH) {
+      return NextResponse.json(
+        { error: '画像サイズが大きすぎます（上限: 約7MB）。カメラの設定やサイズを調整して再度お試しください。' },
+        { status: 413 }
+      );
+    }
+
     if (!Array.isArray(products) || products.length === 0) {
       return NextResponse.json(
         { error: '対象日の販売商品リストが空です。先にオーダー表を取り込んでください。' },

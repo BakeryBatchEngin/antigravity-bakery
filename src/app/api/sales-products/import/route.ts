@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { resolveLossStoreId } from '@/lib/lossStore';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 async function resolveTenantId(db: any, user: any): Promise<number | null> {
   if (user.tenant_id) return Number(user.tenant_id);
@@ -38,34 +38,44 @@ export async function POST(req: Request) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(arrayBuffer) as any);
+    const worksheet = workbook.worksheets[0];
 
-    // 2次元配列として全行を取得
-    const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
-    if (!rows || rows.length < 2) {
+    if (!worksheet || worksheet.rowCount < 2) {
       return NextResponse.json(
         { error: 'Excelファイルにデータ行が見つかりません。' },
         { status: 400 }
       );
     }
 
-    // 1行目のヘッダーから列インデックスを特定（デフォルトは A:0, B:1, C:2, D:3, E:4）
-    const headerRow = rows[0].map((cell: any) => String(cell || '').trim());
-    let codeIdx = 0;
-    let nameIdx = 1;
-    let priceIdx = 2;
-    let catIdx = 3;
-    let charIdx = 4;
+    // セルから安全にテキストを取得するヘルパー
+    const getCellText = (cell: any): string => {
+      if (!cell || cell.value === null || cell.value === undefined) return '';
+      if (typeof cell.value === 'object') {
+        if ('richText' in cell.value) return cell.value.richText.map((t: any) => t.text).join('').trim();
+        if ('text' in cell.value) return String(cell.value.text ?? '').trim();
+        if ('result' in cell.value) return String(cell.value.result ?? '').trim();
+      }
+      return String(cell.value).trim();
+    };
 
-    headerRow.forEach((h: string, idx: number) => {
-      if (h.includes('コード') || h.toLowerCase() === 'product_code') codeIdx = idx;
-      else if (h.includes('商品名') || h.toLowerCase() === 'product_name') nameIdx = idx;
-      else if (h.includes('価格') || h.includes('売価') || h.includes('単価') || h.toLowerCase() === 'retail_price') priceIdx = idx;
-      else if (h.includes('カテゴリ') || h.toLowerCase() === 'category') catIdx = idx;
-      else if (h.includes('特性') || h.includes('特徴') || h.includes('メモ') || h.toLowerCase() === 'characteristics') charIdx = idx;
-    });
+    // 1行目のヘッダーから列インデックスを特定（1始まり）
+    const headerRow = worksheet.getRow(1);
+    let codeCol = 1;
+    let nameCol = 2;
+    let priceCol = 3;
+    let catCol = 4;
+    let charCol = 5;
+
+    for (let c = 1; c <= headerRow.cellCount; c++) {
+      const h = getCellText(headerRow.getCell(c));
+      if (h.includes('コード') || h.toLowerCase() === 'product_code') codeCol = c;
+      else if (h.includes('商品名') || h.toLowerCase() === 'product_name') nameCol = c;
+      else if (h.includes('価格') || h.includes('売価') || h.includes('単価') || h.toLowerCase() === 'retail_price') priceCol = c;
+      else if (h.includes('カテゴリ') || h.toLowerCase() === 'category') catCol = c;
+      else if (h.includes('特性') || h.includes('特徴') || h.includes('メモ') || h.toLowerCase() === 'characteristics') charCol = c;
+    }
 
     interface ParsedItem {
       productCode: string;
@@ -76,18 +86,16 @@ export async function POST(req: Request) {
     }
 
     const items: ParsedItem[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      if (!r || r.length === 0) continue;
-
-      const productCode = String(r[codeIdx] ?? '').trim();
-      const productName = String(r[nameIdx] ?? '').trim();
+    for (let r = 2; r <= worksheet.rowCount; r++) {
+      const row = worksheet.getRow(r);
+      const productCode = getCellText(row.getCell(codeCol));
+      const productName = getCellText(row.getCell(nameCol));
       if (!productCode || !productName) continue;
 
-      const rawPrice = String(r[priceIdx] ?? '').replace(/[,¥￥円\s]/g, '');
+      const rawPrice = getCellText(row.getCell(priceCol)).replace(/[,¥￥円\s]/g, '');
       const retailPrice = Math.max(0, Math.round(Number(rawPrice) || 0));
-      const category = String(r[catIdx] ?? '').trim();
-      const characteristics = String(r[charIdx] ?? '').trim();
+      const category = getCellText(row.getCell(catCol));
+      const characteristics = getCellText(row.getCell(charCol));
 
       items.push({
         productCode,

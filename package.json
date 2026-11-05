@@ -1,6 +1,6 @@
 {
   "name": "temp-app",
-  "version": "5.09.0",
+  "version": "5.10.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
@@ -20,8 +20,7 @@
     "next": "^16.4.5",
     "pg": "^8.20.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "xlsx": "^0.18.5"
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

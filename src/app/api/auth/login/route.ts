@@ -158,7 +158,8 @@ export async function POST(request: Request) {
     // store_id を必ず数値として扱う（PostgreSQLが文字列で返す場合があるため）
     const storeIds = userStores.map((s: any) => Number(s.store_id));
 
-    // 認証成功時、ユーザー情報をJSONでシリアライズしてCookieに保存
+    // 認証成功時、ユーザー情報をJSONでシリアライズしてCookieに保存（7日間の有効期限を付与）
+    const nowSec = Math.floor(Date.now() / 1000);
     const sessionData = {
       id: user.id,
       username: user.username,
@@ -166,6 +167,7 @@ export async function POST(request: Request) {
       displayName: user.display_name,
       storeIds: storeIds,
       tenant_id: user.tenant_id ?? null,
+      exp: nowSec + 60 * 60 * 24 * 7, // 7日間有効
     };
     
     const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');

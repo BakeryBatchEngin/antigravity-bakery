@@ -31,7 +31,22 @@ export async function signSession(value: string): Promise<string> {
   return hashHex;
 }
 
+/**
+ * タイミング攻撃を防ぐ定数時間文字列比較（Edge Runtime互換）
+ * 文字列の長さが異なる、または途中で不一致があっても必ず全体を比較して応答時間を一定に保つ
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 export async function verifySession(value: string, signature: string): Promise<boolean> {
   const expectedSignature = await signSession(value);
-  return expectedSignature === signature;
+  return timingSafeEqual(expectedSignature, signature);
 }

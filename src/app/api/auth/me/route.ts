@@ -20,6 +20,11 @@ export async function GET(request: NextRequest) {
 
     const sessionData = JSON.parse(Buffer.from(sessionCookie.value, 'base64').toString('utf-8'));
     
+    // 有効期限の検証（期限切れの場合はセッションを無効化）
+    if (sessionData.exp && sessionData.exp < Math.floor(Date.now() / 1000)) {
+      return NextResponse.json({ user: null });
+    }
+    
     // active_store_id の値を取得（"manager" という文字列か数値のどちらかを返す）
     let activeStoreId: number | 'manager' | null = null;
     if (activeStoreCookie?.value) {
