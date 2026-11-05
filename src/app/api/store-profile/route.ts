@@ -49,7 +49,13 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     console.error('Error fetching store profile:', error);
-    return NextResponse.json({ error: '店舗プロファイルの取得に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: '店舗プロファイルの取得に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -94,6 +100,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: '店舗基礎データを保存しました。' });
   } catch (error: any) {
     console.error('Error saving store profile:', error);
-    return NextResponse.json({ error: '店舗基礎データの保存に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: '店舗基礎データの保存に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
+      { status: 500 }
+    );
   }
 }

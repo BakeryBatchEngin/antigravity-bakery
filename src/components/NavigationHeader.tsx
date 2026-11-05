@@ -1,48 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
 export default function NavigationHeader() {
-  const [user, setUser] = useState<any>(null);
-  const [stores, setStores] = useState<any[]>([]);
-  // activeStoreId は 数値（店舗ID）または "manager"（マネージャーモード）または null
-  const [activeStoreId, setActiveStoreId] = useState<number | 'manager' | null>(null);
+  const { user, stores, activeStoreId, setActiveStoreId, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch('/api/auth/me');
-        const data = await res.json();
-        setUser(data.user);
-        if (data.stores) setStores(data.stores);
-        if (data.activeStoreId !== undefined) setActiveStoreId(data.activeStoreId);
-      } catch (err) {
-        setUser(null);
-        setStores([]);
-      }
-    };
-    fetchUser();
-
-    window.addEventListener('roleChange', fetchUser);
-    return () => window.removeEventListener('roleChange', fetchUser);
-  }, []);
-
   const handleLogout = async () => {
     if (!confirm('ログアウトしますか？')) return;
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-      setStores([]);
-      setActiveStoreId(null);
-      window.dispatchEvent(new Event('roleChange'));
-      router.push('/login');
-    } catch (e) {
-      console.error(e);
-    }
+    await logout();
   };
 
   // セレクトボックスの値が変わったとき（"manager" または 店舗IDの数値文字列）
@@ -104,7 +73,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.10</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.11</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -194,7 +163,7 @@ export default function NavigationHeader() {
       </div>
 
       {/* 管理者・マスタモード・Super Admin時のみ表示される追加ナビゲーションバー */}
-      {(role === 'master' || role === 'admin' || role === 'super_admin') && (
+      {(role === 'master' || role === 'admin' || role === 'super_admin' || role === 'store_loss_manager' || role === 'company_loss_manager') && (
         <div className="bg-slate-100 border-t border-slate-200 px-4 py-2 flex items-center gap-4 overflow-x-auto text-sm">
           {role === 'super_admin' && (
             <>

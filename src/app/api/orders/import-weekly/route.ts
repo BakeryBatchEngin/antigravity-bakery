@@ -179,7 +179,10 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Import weekly orders error:', error);
     return NextResponse.json(
-      { error: 'データの保存に失敗しました。', details: error.message },
+      {
+        error: 'データの保存に失敗しました。',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
       { status: 500 }
     );
   }

@@ -7,39 +7,20 @@ import { useRouter } from "next/navigation";
 import ManagerDashboardPage from "./manager/dashboard/page";
 import StatusCalendar from "@/components/StatusCalendar";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 export default function Home() {
-  const [user, setUser] = useState<any>(null);
-  const [activeStoreId, setActiveStoreId] = useState<number | 'manager' | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, activeStoreId, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch('/api/auth/me');
-        const data = await res.json();
-        if (data.user) {
-          if (data.user.role === 'super_admin') {
-            window.location.href = '/super-admin';
-            return; // リダイレクト完了まで Loading 状態を維持するため、setLoading(false) を呼ばない
-          }
-          setUser(data.user);
-          if (data.activeStoreId !== undefined) setActiveStoreId(data.activeStoreId);
-        } else {
-          router.push('/login');
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+    if (!loading) {
+      if (user?.role === 'super_admin') {
+        window.location.href = '/super-admin';
+      } else if (!user) {
+        router.push('/login');
       }
-    };
-    fetchUser();
-    
-    // 他のタブやヘッダーからのログアウト等に対応するため、イベントリッスン
-    window.addEventListener('roleChange', fetchUser);
-    return () => window.removeEventListener('roleChange', fetchUser);
-  }, [router]);
+    }
+  }, [user, loading, router]);
 
   const [isImporting, setIsImporting] = useState(false);
   const excelInputRef = React.useRef<HTMLInputElement>(null);

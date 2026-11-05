@@ -98,7 +98,10 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error('Error fetching waste targets:', error);
     return NextResponse.json(
-      { error: 'データの取得に失敗しました', details: error.message },
+      {
+        error: 'データの取得に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
       { status: 500 }
     );
   }

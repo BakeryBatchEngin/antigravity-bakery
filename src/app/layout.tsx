@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import NavigationHeader from "@/components/NavigationHeader";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,12 +21,14 @@ export default function RootLayout({
           ? 'bg-slate-50 text-slate-900' 
           : 'bg-orange-50 text-orange-950'
       }`} suppressHydrationWarning>
-        <NavigationHeader />
+        <AuthProvider>
+          <NavigationHeader />
 
-        {/* メインコンテンツ部分 */}
-        <main className="flex-1 container mx-auto p-4 md:p-6 lg:p-8">
-          {children}
-        </main>
+          {/* メインコンテンツ部分 */}
+          <main className="flex-1 container mx-auto p-4 md:p-6 lg:p-8">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

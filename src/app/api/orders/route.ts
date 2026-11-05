@@ -18,7 +18,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, registeredDates, setDates });
   } catch (error: any) {
     console.error('Error fetching dates:', error);
-    return NextResponse.json({ error: '日付データの取得に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: '日付データの取得に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -197,6 +203,12 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Error saving orders:', error);
-    return NextResponse.json({ error: 'データベースへの保存に失敗しました', details: error.message || String(error) }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'データベースへの保存に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : (error.message || String(error)),
+      },
+      { status: 500 }
+    );
   }
 }

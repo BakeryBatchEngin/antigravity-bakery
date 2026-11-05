@@ -181,7 +181,10 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Failed to save order breakdowns:', error);
     return NextResponse.json(
-      { error: '内訳データの保存に失敗しました', details: error.message || String(error) },
+      {
+        error: '内訳データの保存に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : (error.message || String(error)),
+      },
       { status: 500 }
     );
   }

@@ -236,7 +236,13 @@ export async function GET(req: Request) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching loss analytics:', error);
-    return NextResponse.json({ error: '実績解析データの取得に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: '実績解析データの取得に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -319,11 +325,15 @@ export async function POST(req: Request) {
 - 丁寧で温かみがあり、現場が前向きに明日活かせるアドバイスにしてください。`;
 
     const modelName = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+    // Gemini REST API を直接呼び出し、x-goog-api-key ヘッダー経由で安全に認証する
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -369,6 +379,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, aiComment });
   } catch (error: any) {
     console.error('Error generating AI analysis:', error);
-    return NextResponse.json({ error: 'AI分析の生成に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'AI分析の生成に失敗しました',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
+      { status: 500 }
+    );
   }
 }

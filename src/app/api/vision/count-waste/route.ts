@@ -142,12 +142,15 @@ ${productListText}
       ],
     });
 
-    // Gemini REST API を直接呼び出し、thinkingLevel: 'LOW' を確実に適用して応答速度を最大化する
+    // Gemini REST API を直接呼び出し、x-goog-api-key ヘッダー経由で安全に認証する
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents,
           generationConfig: {
@@ -194,7 +197,10 @@ ${productListText}
   } catch (error: any) {
     console.error('Gemini Vision API Error:', error);
     return NextResponse.json(
-      { error: 'AIによる画像の解析に失敗しました。', details: error.message },
+      {
+        error: 'AIによる画像の解析に失敗しました。',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      },
       { status: 500 }
     );
   }
