@@ -73,7 +73,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.12</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.13</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}

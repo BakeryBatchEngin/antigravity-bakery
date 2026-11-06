@@ -69,6 +69,7 @@ interface DailyAnalyticsData {
   targetDate: string;
   dayLabel: string;
   dayJaLabel: string;
+  isWasteRecorded?: boolean;
   todayHours: { open: string; close: string; closed: boolean };
   locationCharacteristics: string;
   summary: DailySummaryData;
@@ -92,6 +93,7 @@ interface PeriodSegment {
   key: string;
   label: string;
   shortLabel: string;
+  hasRecordedData?: boolean;
   metrics: PeriodMetric;
 }
 
@@ -769,6 +771,29 @@ export default function LossAnalyticsPage() {
             </div>
           ) : (
             <>
+              {/* ロス未入力時の案内バナー */}
+              {dayData.isWasteRecorded === false && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⏳</span>
+                    <div>
+                      <p className="font-extrabold text-sm text-amber-950">
+                        {dayData.targetDate} の「ロスパン登録」は未完了です
+                      </p>
+                      <p className="text-amber-800 font-medium text-[11px] mt-0.5">
+                        閉店後にロスパン登録（AI撮影・個数保存）を行うと、当日の販売数・販売総額が自動計算され、実績として確定・反映されます。
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href="/store-manager/waste"
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black transition-colors whitespace-nowrap shadow-xs flex-shrink-0"
+                  >
+                    ロスパン登録へ →
+                  </Link>
+                </div>
+              )}
+
               {/* 日次トップ サマリー指標 ＋ AI分析カード */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border p-4 sm:p-5">
@@ -788,11 +813,22 @@ export default function LossAnalyticsPage() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3">
-                      <span className="text-xs font-bold text-emerald-800">販売総額</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-800">販売総額</span>
+                        {dayData.isWasteRecorded === false && (
+                          <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-950">
+                            未確定
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xl sm:text-2xl font-black text-emerald-950 tabular-nums mt-0.5">
                         ¥{dayData.summary.soldAmount.toLocaleString()}
                       </p>
-                      <span className="text-[10px] text-emerald-700 font-medium">（税抜 売上実績）</span>
+                      <span className="text-[10px] text-emerald-700 font-medium">
+                        {dayData.isWasteRecorded === false
+                          ? '（閉店後のロス登録で確定）'
+                          : '（税抜 売上実績）'}
+                      </span>
                     </div>
 
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
@@ -1174,11 +1210,18 @@ export default function LossAnalyticsPage() {
                         <td className="py-2.5 px-3 font-bold text-emerald-950 sticky left-0 bg-white/95 z-10 border-r">
                           販売総額
                         </td>
-                        {periodData.segments.map(s => (
-                          <td key={s.key} className="py-2.5 px-3 text-right tabular-nums text-emerald-950 font-bold">
-                            ¥{s.metrics.soldAmount.toLocaleString()}
-                          </td>
-                        ))}
+                        {periodData.segments.map(s => {
+                          const isUnrecorded = s.hasRecordedData === false && s.metrics.orderAmount > 0;
+                          return (
+                            <td key={s.key} className="py-2.5 px-3 text-right tabular-nums text-emerald-950 font-bold">
+                              {isUnrecorded ? (
+                                <span className="text-gray-400 font-normal">¥0 (未入力)</span>
+                              ) : (
+                                `¥${s.metrics.soldAmount.toLocaleString()}`
+                              )}
+                            </td>
+                          );
+                        })}
                         <td className="py-2.5 px-3 text-right tabular-nums font-black text-emerald-950 bg-emerald-100/40">
                           ¥{periodData.summary.soldAmount.toLocaleString()}
                         </td>
@@ -1234,11 +1277,18 @@ export default function LossAnalyticsPage() {
                         <td className="py-2.5 px-3 font-bold text-rose-950 sticky left-0 bg-white/95 z-10 border-r">
                           ロス率
                         </td>
-                        {periodData.segments.map(s => (
-                          <td key={s.key} className="py-2.5 px-3 text-right tabular-nums text-rose-900 font-extrabold">
-                            {(s.metrics.wasteRate * 100).toFixed(2)}%
-                          </td>
-                        ))}
+                        {periodData.segments.map(s => {
+                          const isUnrecorded = s.hasRecordedData === false && s.metrics.orderAmount > 0;
+                          return (
+                            <td key={s.key} className="py-2.5 px-3 text-right tabular-nums text-rose-900 font-extrabold">
+                              {isUnrecorded ? (
+                                <span className="text-gray-400 font-normal">-</span>
+                              ) : (
+                                `${(s.metrics.wasteRate * 100).toFixed(2)}%`
+                              )}
+                            </td>
+                          );
+                        })}
                         <td className="py-2.5 px-3 text-right tabular-nums font-black text-rose-900 bg-rose-200/50">
                           {(periodData.summary.wasteRate * 100).toFixed(2)}%
                         </td>

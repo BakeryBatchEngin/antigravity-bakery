@@ -6,6 +6,7 @@ export interface TrendSegment {
   key: string;
   label: string;
   shortLabel: string;
+  hasRecordedData?: boolean;
   metrics: {
     soldAmount: number;
     orderAmount: number;
@@ -298,7 +299,9 @@ export default function LossTrendChart({ segments, height = 320 }: LossTrendChar
               <div>
                 <span className="text-[10px] text-gray-400 block">販売総額</span>
                 <span className="text-emerald-400 font-bold">
-                  ¥{segments[hoveredIdx].metrics.soldAmount.toLocaleString()}
+                  {segments[hoveredIdx].hasRecordedData === false && segments[hoveredIdx].metrics.orderAmount > 0
+                    ? '¥0 (未入力)'
+                    : `¥${segments[hoveredIdx].metrics.soldAmount.toLocaleString()}`}
                 </span>
               </div>
               <div>

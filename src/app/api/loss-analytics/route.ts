@@ -101,6 +101,7 @@ async function buildDailyAnalytics(db: any, storeId: number, targetDate: string,
 
   // 5. 商品コードのユニオン
   const allCodes = new Set<string>([...orderMap.keys(), ...wasteMap.keys()]);
+  const isWasteRecorded = wasteRecords.length > 0;
 
   const rows: any[] = [];
   let totalOrderAmount = 0;
@@ -129,29 +130,32 @@ async function buildDailyAnalytics(db: any, storeId: number, targetDate: string,
     const sampleCount = Number(waste?.sample_count ?? 0);
     const sampleAmount = sampleCount * price;
 
-    const soldQty = actualDeliveryQty - wasteCount - sampleCount;
-    const soldAmount = soldQty * price;
+    // ロス入力前（未登録日）は、販売数および販売金額を 0 にする
+    const soldQty = isWasteRecorded ? actualDeliveryQty - wasteCount - sampleCount : 0;
+    const soldAmount = isWasteRecorded ? soldQty * price : 0;
 
     const soldOutTime = waste?.sold_out_time ? String(waste.sold_out_time).trim() : '';
     const comment = waste?.comment ? String(waste.comment).trim() : '';
 
     let soldOutStatus: 'early' | 'normal' | 'late' | 'not_sold_out' | 'no_time' = 'no_time';
     let soldOutPercent = 0;
-    if (soldOutTime) {
-      const soldMins = timeToMinutes(soldOutTime);
-      if (soldMins !== null) {
-        const diffFromOpen = soldMins - openMins;
-        soldOutPercent = Math.min(100, Math.max(0, Math.round((diffFromOpen / totalOpenMinutes) * 100)));
-        if (soldOutPercent <= 50) {
-          soldOutStatus = 'early';
-        } else if (soldOutPercent <= 85) {
-          soldOutStatus = 'normal';
-        } else {
-          soldOutStatus = 'late';
+    if (isWasteRecorded) {
+      if (soldOutTime) {
+        const soldMins = timeToMinutes(soldOutTime);
+        if (soldMins !== null) {
+          const diffFromOpen = soldMins - openMins;
+          soldOutPercent = Math.min(100, Math.max(0, Math.round((diffFromOpen / totalOpenMinutes) * 100)));
+          if (soldOutPercent <= 50) {
+            soldOutStatus = 'early';
+          } else if (soldOutPercent <= 85) {
+            soldOutStatus = 'normal';
+          } else {
+            soldOutStatus = 'late';
+          }
         }
+      } else if (wasteCount > 0) {
+        soldOutStatus = 'not_sold_out';
       }
-    } else if (wasteCount > 0) {
-      soldOutStatus = 'not_sold_out';
     }
 
     rows.push({
@@ -201,6 +205,7 @@ async function buildDailyAnalytics(db: any, storeId: number, targetDate: string,
     targetDate,
     dayLabel,
     dayJaLabel,
+    isWasteRecorded,
     todayHours,
     locationCharacteristics: profile?.location_characteristics || '',
     summary: {
@@ -364,6 +369,12 @@ async function buildPeriodAnalytics(
 
   const mergedMap = new Map<string, MergedItem>();
 
+  // ロス入力済みの日時・店舗を記録したセット（waste_records に登録がある日のみ「ロス入力済み」とする）
+  const recordedStoreDays = new Set<string>();
+  for (const w of wasteRows) {
+    recordedStoreDays.add(`${w.store_id}__${w.target_date}`);
+  }
+
   for (const o of orderRows) {
     const key = `${o.store_id}__${o.order_date}__${o.product_code}`;
     const master = masterMap.get(o.product_code);
@@ -371,6 +382,11 @@ async function buildPeriodAnalytics(
     categorySet.add(cat);
     const price = master?.price ?? 0;
     const orderQty = Number(o.quantity ?? 0);
+
+    // ロス未入力の日（当日営業中や未来日）は販売数・販売金額を 0 にする
+    const isRecorded = recordedStoreDays.has(`${o.store_id}__${o.order_date}`);
+    const initialSoldQty = isRecorded ? orderQty : 0;
+    const initialSoldAmount = isRecorded ? orderQty * price : 0;
 
     mergedMap.set(key, {
       storeId: o.store_id,
@@ -383,8 +399,8 @@ async function buildPeriodAnalytics(
       deliveryDiff: 0,
       wasteCount: 0,
       sampleCount: 0,
-      soldQty: orderQty,
-      soldAmount: orderQty * price,
+      soldQty: initialSoldQty,
+      soldAmount: initialSoldAmount,
       orderAmount: orderQty * price,
       deliveryAmount: orderQty * price,
       wasteAmount: 0,
@@ -681,12 +697,18 @@ async function buildPeriodAnalytics(
     },
     store: storeDisplay,
     summary,
-    segments: segments.map((seg, idx) => ({
-      key: seg.key,
-      label: seg.label,
-      shortLabel: seg.shortLabel,
-      metrics: segmentMetrics[idx],
-    })),
+    segments: segments.map((seg, idx) => {
+      const hasRecordedData = seg.dates.some(d => {
+        return stores.some(s => recordedStoreDays.has(`${s.id}__${d}`));
+      });
+      return {
+        key: seg.key,
+        label: seg.label,
+        shortLabel: seg.shortLabel,
+        hasRecordedData,
+        metrics: segmentMetrics[idx],
+      };
+    }),
     rankings: {
       topSales,
       topWaste,
