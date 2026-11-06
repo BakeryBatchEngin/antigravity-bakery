@@ -73,7 +73,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.11</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.12</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -102,7 +102,7 @@ export default function NavigationHeader() {
             )}
 
             {/* ===== 企業ロス統括管理者専用：自社の店舗を切り替えるセレクト（スマホでも表示） ===== */}
-            {role === 'company_loss_manager' && stores.length > 0 && (
+            {role === 'company_loss_manager' && stores.length > 0 && pathname !== '/store-manager/analytics' && (
               <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-2 sm:px-3 py-1.5">
                 <span className="text-xs font-bold text-emerald-700 mr-1 sm:mr-2">🏪 店舗:</span>
                 <select
