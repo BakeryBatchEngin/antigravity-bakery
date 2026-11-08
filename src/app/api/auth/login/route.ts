@@ -44,8 +44,67 @@ export async function POST(request: Request) {
     // DBからユーザー検索
     const user = await db.get(`SELECT * FROM users WHERE username = $1`, [username]);
     
-    // ユーザーが存在しない場合：ダミーのbcrypt比較を実行して応答時間を平準化（ユーザー列挙攻撃対策）
+    // ユーザーが存在しない場合：クリスマス専用アカウントを検索
     if (!user) {
+      const xmasAccount = await db.get(
+        `SELECT * FROM xmas_accounts WHERE username = $1 AND is_active = true`,
+        [username]
+      );
+
+      if (xmasAccount) {
+        const inputPw = password || pin || '';
+        const isMatch = await bcrypt.compare(inputPw, xmasAccount.password_hash);
+        if (!isMatch) {
+          return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
+        }
+
+        const nowSec = Math.floor(Date.now() / 1000);
+        const sessionData = {
+          id: xmasAccount.id,
+          username: xmasAccount.username,
+          role: xmasAccount.role,
+          displayName: xmasAccount.display_name,
+          storeIds: [],
+          tenant_id: xmasAccount.tenant_id,
+          is_xmas: true,
+          exp: nowSec + 60 * 60 * 24 * 7,
+        };
+
+        const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
+        const { signSession } = await import('@/lib/authCrypto');
+        const signature = await signSession(sessionString);
+
+        const response = NextResponse.json({
+          success: true,
+          user: sessionData,
+          redirectUrl: xmasAccount.role === 'xmas_factory' ? '/xmas/factory' : '/xmas/orders',
+        });
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        response.cookies.set({
+          name: 'bakery_session',
+          value: sessionString,
+          httpOnly: true,
+          secure: isProduction,
+          path: '/',
+          maxAge: 60 * 60 * 24 * 7,
+          sameSite: 'lax',
+        });
+
+        response.cookies.set({
+          name: 'bakery_session_sig',
+          value: signature,
+          httpOnly: true,
+          secure: isProduction,
+          path: '/',
+          maxAge: 60 * 60 * 24 * 7,
+          sameSite: 'lax',
+        });
+
+        return response;
+      }
+
+      // どちらにも存在しない場合：ダミーのbcrypt比較を実行して応答時間を平準化（ユーザー列挙攻撃対策）
       await bcrypt.compare(password || pin || 'dummy', DUMMY_HASH);
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }

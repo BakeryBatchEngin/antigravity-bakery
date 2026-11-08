@@ -16,6 +16,10 @@ export default function Home() {
     if (!loading) {
       if (user?.role === 'super_admin') {
         window.location.href = '/super-admin';
+      } else if (user?.role === 'xmas_factory') {
+        window.location.href = '/xmas/factory';
+      } else if (['tokyo_store', 'regional_store', 'xmas_manager'].includes(user?.role || '')) {
+        window.location.href = '/xmas/orders';
       } else if (!user) {
         router.push('/login');
       }
@@ -330,6 +334,15 @@ export default function Home() {
               <span className="text-6xl mb-6 group-hover:scale-110 transition-transform drop-shadow-md">🏢</span>
               <h3 className="text-2xl font-bold text-white">店舗・設備管理</h3>
               <p className="text-slate-400 mt-3 text-center text-lg">店舗マスタとミキサー設定</p>
+            </Link>
+
+            <Link 
+              href="/admin/xmas-accounts" 
+              className="flex flex-col items-center justify-center p-12 bg-slate-800 rounded-3xl shadow-xl border border-slate-700 hover:border-red-500 hover:shadow-red-500/20 transition-all group"
+            >
+              <span className="text-6xl mb-6 group-hover:scale-110 transition-transform drop-shadow-md">🎄</span>
+              <h3 className="text-2xl font-bold text-white">クリスマスアカウント管理</h3>
+              <p className="text-slate-400 mt-3 text-center text-lg">2026年受発注アカウントの発行・管理</p>
             </Link>
           </div>
         </>

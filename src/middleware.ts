@@ -32,6 +32,22 @@ const ROLE_ACCESS = {
     '/api/store-profile',
     '/api/loss-analytics',
   ],
+  tokyo_store: [
+    '/xmas',
+    '/api/xmas',
+  ],
+  regional_store: [
+    '/xmas',
+    '/api/xmas',
+  ],
+  xmas_manager: [
+    '/xmas',
+    '/api/xmas',
+  ],
+  xmas_factory: [
+    '/xmas',
+    '/api/xmas',
+  ],
 };
 
 export async function middleware(request: NextRequest) {

@@ -57,6 +57,7 @@ export default function NavigationHeader() {
   const role = user?.role;
   const isMasterOrAdmin = role === 'admin' || role === 'master';
   const isManager = role === 'manager';
+  const isXmasUser = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory'].includes(role || '');
 
   // マネージャーが担当できる店舗リスト（自分のstoreIds に含まれるもの）
   const managerStores = isManager
@@ -73,7 +74,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.13</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.50</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -120,7 +121,7 @@ export default function NavigationHeader() {
             )}
 
             {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin/企業ロス統括管理者は別の場所で管理）===== */}
-            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && role !== 'company_loss_manager' && (
+            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && role !== 'company_loss_manager' && !isXmasUser && (
               <div className="hidden sm:flex items-center bg-slate-100 rounded-lg px-3 py-1.5 border border-slate-200">
                 <span className="text-xs font-bold text-slate-500 mr-2">📍 店舗:</span>
                 {(user.storeIds && user.storeIds.length > 1) ? (
@@ -150,7 +151,7 @@ export default function NavigationHeader() {
 
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4">
               <div className={`text-sm font-bold ${headerTextClass}`}>{user.displayName}</div>
-              <div className={`text-xs uppercase tracking-wider ${headerSubtitleClass}`}>{user.role} Mode</div>
+              <div className={`text-xs uppercase tracking-wider ${headerSubtitleClass}`}>{role === 'tokyo_store' ? '首都圏店舗' : role === 'regional_store' ? '地方店舗' : role === 'xmas_manager' ? 'クリスマスマネージャー' : role === 'xmas_factory' ? '工場アカウント' : user.role} Mode</div>
             </div>
             <button 
               onClick={handleLogout}
@@ -171,6 +172,9 @@ export default function NavigationHeader() {
               <Link href="/super-admin" className="font-bold flex-shrink-0 text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1 rounded-md border border-indigo-100">
                 🚀 スーパー管理者ダッシュボードへ
               </Link>
+              <Link href="/admin/xmas-accounts" className={`font-bold flex-shrink-0 ${pathname === '/admin/xmas-accounts' ? 'text-red-600' : 'text-slate-600 hover:text-red-700'} bg-red-50 px-3 py-1 rounded-md border border-red-200`}>
+                🎄 クリスマスアカウント管理
+              </Link>
             </>
           )}
 
@@ -189,6 +193,7 @@ export default function NavigationHeader() {
               <span className="font-bold text-slate-500 flex-shrink-0 mr-2">Admin Menu:</span>
               <Link href="/admin/users" className={`font-bold flex-shrink-0 ${pathname === '/admin/users' ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}>👥 ユーザー管理</Link>
               <Link href="/admin/stores" className={`font-bold flex-shrink-0 ${pathname === '/admin/stores' ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}>🏪 店舗・設備管理</Link>
+              <Link href="/admin/xmas-accounts" className={`font-bold flex-shrink-0 ${pathname === '/admin/xmas-accounts' ? 'text-red-600' : 'text-slate-500 hover:text-red-700'}`}>🎄 クリスマスアカウント管理</Link>
             </>
           )}
 

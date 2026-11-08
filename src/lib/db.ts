@@ -629,5 +629,61 @@ export async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE DEFAULT NULL;
   `);
 
+  // クリスマス期間限定 受発注システム専用テーブル群（完全分離）
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS xmas_accounts (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory')),
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS xmas_orders (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      account_id INTEGER REFERENCES xmas_accounts(id) ON DELETE CASCADE,
+      order_datetime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      staff_name TEXT NOT NULL,
+      order_route TEXT NOT NULL,
+      web_reservation_no TEXT,
+      payment_status TEXT NOT NULL,
+      discount_type TEXT NOT NULL,
+      delivery_date TEXT NOT NULL,
+      delivery_time TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      customer_phone TEXT NOT NULL,
+      memo TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS xmas_order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER REFERENCES xmas_orders(id) ON DELETE CASCADE,
+      product_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS xmas_product_limits (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      product_name TEXT NOT NULL,
+      max_limit INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (tenant_id, product_name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_xmas_orders_tenant_account ON xmas_orders(tenant_id, account_id);
+    CREATE INDEX IF NOT EXISTS idx_xmas_orders_delivery ON xmas_orders(delivery_date, delivery_time);
+    CREATE INDEX IF NOT EXISTS idx_xmas_order_items_order_id ON xmas_order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_xmas_accounts_tenant ON xmas_accounts(tenant_id);
+  `);
+
   console.log('PostgreSQL Database initialized successfully.');
 }
