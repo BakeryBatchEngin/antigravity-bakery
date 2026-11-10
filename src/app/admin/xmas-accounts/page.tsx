@@ -10,7 +10,7 @@ type XmasAccount = {
   tenant_id: number;
   username: string;
   display_name: string;
-  role: 'tokyo_store' | 'regional_store' | 'xmas_manager' | 'xmas_factory';
+  role: 'tokyo_store' | 'regional_store' | 'xmas_manager' | 'xmas_factory' | 'xmas_headquarters';
   is_active: boolean;
   created_at: string;
   tenant_name?: string;
@@ -27,6 +27,7 @@ const ROLE_LABELS: Record<string, { label: string; color: string; icon: string }
   regional_store: { label: '② 地方店舗', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: '🌾' },
   xmas_manager: { label: '③ クリスマスマネージャー', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: '👔' },
   xmas_factory: { label: '④ 工場アカウント', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: '🏭' },
+  xmas_headquarters: { label: '⑤ 本部アカウント（閲覧専用）', color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: '🏛️' },
 };
 
 export default function XmasAccountsPage() {
@@ -49,7 +50,7 @@ export default function XmasAccountsPage() {
     username: '',
     password: '',
     display_name: '',
-    role: 'tokyo_store' as 'tokyo_store' | 'regional_store' | 'xmas_manager' | 'xmas_factory',
+    role: 'tokyo_store' as 'tokyo_store' | 'regional_store' | 'xmas_manager' | 'xmas_factory' | 'xmas_headquarters',
     tenant_id: '',
     is_active: true,
   });
@@ -371,6 +372,7 @@ export default function XmasAccountsPage() {
                     <option value="regional_store">② 地方店舗（お客様受注データ入力）</option>
                     <option value="xmas_manager">③ クリスマスマネージャー（全店閲覧・切替入力）</option>
                     <option value="xmas_factory">④ 工場アカウント（日別出荷数・最大受注数設定・集計）</option>
+                    <option value="xmas_headquarters">⑤ 本部アカウント（各店受注・工場集計の閲覧専用）</option>
                   </select>
                 </div>
 

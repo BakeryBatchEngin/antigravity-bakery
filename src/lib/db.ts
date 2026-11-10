@@ -637,7 +637,7 @@ export async function initDb() {
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory')),
+      role TEXT NOT NULL CHECK (role IN ('tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory', 'xmas_headquarters')),
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

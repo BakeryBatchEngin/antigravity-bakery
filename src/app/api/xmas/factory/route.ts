@@ -23,8 +23,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 工場、管理者、Superadmin、マネージャーが閲覧可能
-    const isAllowed = ['xmas_factory', 'admin', 'super_admin', 'xmas_manager'].includes(user.role);
+    // 工場、管理者、Superadmin、マネージャー、本部が閲覧可能
+    const isAllowed = ['xmas_factory', 'admin', 'super_admin', 'xmas_manager', 'xmas_headquarters'].includes(user.role);
     if (!isAllowed) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 });
     }

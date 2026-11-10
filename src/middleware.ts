@@ -48,6 +48,10 @@ const ROLE_ACCESS = {
     '/xmas',
     '/api/xmas',
   ],
+  xmas_headquarters: [
+    '/xmas',
+    '/api/xmas',
+  ],
 };
 
 export async function middleware(request: NextRequest) {

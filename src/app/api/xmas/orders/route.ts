@@ -31,11 +31,12 @@ export async function GET(request: Request) {
     const isAdmin = user.role === 'admin';
     const isManager = user.role === 'xmas_manager';
     const isFactory = user.role === 'xmas_factory';
+    const isHeadquarters = user.role === 'xmas_headquarters';
     const isStore = user.role === 'tokyo_store' || user.role === 'regional_store';
 
-    // 2. 店舗アカウント一覧（マネージャー・工場・管理者の切替用）
+    // 2. 店舗アカウント一覧（マネージャー・工場・本部・管理者の切替用）
     let availableAccounts: any[] = [];
-    if (isSuperAdmin || isAdmin || isManager || isFactory) {
+    if (isSuperAdmin || isAdmin || isManager || isFactory || isHeadquarters) {
       let accQuery = `
         SELECT id, username, display_name, role 
         FROM xmas_accounts 
@@ -166,6 +167,10 @@ export async function POST(request: Request) {
     const { user, error } = await getSessionUser();
     if (error || !user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    if (user.role === 'xmas_headquarters') {
+      return NextResponse.json({ error: '本部アカウントは閲覧専用のため、登録操作はできません' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -301,6 +306,10 @@ export async function PUT(request: Request) {
     const { user, error } = await getSessionUser();
     if (error || !user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    if (user.role === 'xmas_headquarters') {
+      return NextResponse.json({ error: '本部アカウントは閲覧専用のため、登録操作はできません' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -445,6 +454,10 @@ export async function DELETE(request: Request) {
     const { user, error } = await getSessionUser();
     if (error || !user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    if (user.role === 'xmas_headquarters') {
+      return NextResponse.json({ error: '本部アカウントは閲覧専用のため、登録操作はできません' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

@@ -57,7 +57,7 @@ export default function NavigationHeader() {
   const role = user?.role;
   const isMasterOrAdmin = role === 'admin' || role === 'master';
   const isManager = role === 'manager';
-  const isXmasUser = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory'].includes(role || '');
+  const isXmasUser = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory', 'xmas_headquarters'].includes(role || '');
 
   // マネージャーが担当できる店舗リスト（自分のstoreIds に含まれるもの）
   const managerStores = isManager
@@ -74,7 +74,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.50</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.51</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -151,7 +151,7 @@ export default function NavigationHeader() {
 
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4">
               <div className={`text-sm font-bold ${headerTextClass}`}>{user.displayName}</div>
-              <div className={`text-xs uppercase tracking-wider ${headerSubtitleClass}`}>{role === 'tokyo_store' ? '首都圏店舗' : role === 'regional_store' ? '地方店舗' : role === 'xmas_manager' ? 'クリスマスマネージャー' : role === 'xmas_factory' ? '工場アカウント' : user.role} Mode</div>
+              <div className={`text-xs uppercase tracking-wider ${headerSubtitleClass}`}>{role === 'tokyo_store' ? '首都圏店舗' : role === 'regional_store' ? '地方店舗' : role === 'xmas_manager' ? 'クリスマスマネージャー' : role === 'xmas_factory' ? '工場アカウント' : role === 'xmas_headquarters' ? '本部アカウント（閲覧専用）' : user.role} Mode</div>
             </div>
             <button 
               onClick={handleLogout}
@@ -162,6 +162,18 @@ export default function NavigationHeader() {
           </div>
         )}
       </div>
+
+      {role === 'xmas_headquarters' && (
+        <div className="bg-indigo-50/70 border-t border-indigo-100 px-4 py-2 flex items-center gap-4 overflow-x-auto text-sm">
+          <span className="font-bold text-indigo-700 flex-shrink-0 mr-2">🏛️ 本部メニュー:</span>
+          <Link href="/xmas/orders" className={`font-bold flex-shrink-0 ${pathname === '/xmas/orders' ? 'text-indigo-800 underline' : 'text-slate-600 hover:text-indigo-700'}`}>
+            📋 各店受注一覧（閲覧）
+          </Link>
+          <Link href="/xmas/factory" className={`font-bold flex-shrink-0 ${pathname === '/xmas/factory' ? 'text-indigo-800 underline' : 'text-slate-600 hover:text-indigo-700'}`}>
+            🏭 工場出荷集計（閲覧）
+          </Link>
+        </div>
+      )}
 
       {/* 管理者・マスタモード・Super Admin時のみ表示される追加ナビゲーションバー */}
       {(role === 'master' || role === 'admin' || role === 'super_admin' || role === 'store_loss_manager' || role === 'company_loss_manager') && (

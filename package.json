@@ -1,6 +1,6 @@
 {
   "name": "temp-app",
-  "version": "5.50.0",
+  "version": "5.51.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",

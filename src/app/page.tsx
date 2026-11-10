@@ -18,7 +18,7 @@ export default function Home() {
         window.location.href = '/super-admin';
       } else if (user?.role === 'xmas_factory') {
         window.location.href = '/xmas/factory';
-      } else if (['tokyo_store', 'regional_store', 'xmas_manager'].includes(user?.role || '')) {
+      } else if (['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_headquarters'].includes(user?.role || '')) {
         window.location.href = '/xmas/orders';
       } else if (!user) {
         router.push('/login');

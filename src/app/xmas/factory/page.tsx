@@ -67,7 +67,7 @@ export default function XmasFactoryPage() {
         router.push('/login');
         return;
       }
-      if (!['xmas_factory', 'admin', 'super_admin', 'xmas_manager'].includes(user.role)) {
+      if (!['xmas_factory', 'admin', 'super_admin', 'xmas_manager', 'xmas_headquarters'].includes(user.role)) {
         router.push('/xmas/orders');
         return;
       }
@@ -148,6 +148,7 @@ export default function XmasFactoryPage() {
     return <LoadingSpinner fullScreen={true} />;
   }
 
+  const isHeadquarters = user?.role === 'xmas_headquarters';
   const currentDailyMatrix = dailyMatrix[shipmentScope] || {};
 
   // メインケーキのサマリーとおまけ商品のサマリーを分離
@@ -198,14 +199,21 @@ export default function XmasFactoryPage() {
                 <span>全注文履歴一覧へ</span>
               </button>
 
-              <button
-                onClick={handleSaveLimits}
-                disabled={savingLimits}
-                className="px-5 py-2.5 rounded-xl font-black text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all disabled:opacity-50 text-xs sm:text-sm flex items-center gap-2"
-              >
-                <span>💾</span>
-                <span>{savingLimits ? '保存中...' : '最大受注数を保存'}</span>
-              </button>
+              {isHeadquarters ? (
+                <div className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl font-bold text-xs flex items-center gap-1.5">
+                  <span>🏛️</span>
+                  <span>本部（閲覧専用）</span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleSaveLimits}
+                  disabled={savingLimits}
+                  className="px-5 py-2.5 rounded-xl font-black text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all disabled:opacity-50 text-xs sm:text-sm flex items-center gap-2"
+                >
+                  <span>💾</span>
+                  <span>{savingLimits ? '保存中...' : '最大受注数を保存'}</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -277,12 +285,15 @@ export default function XmasFactoryPage() {
                           type="number"
                           min={0}
                           step={1}
+                          disabled={isHeadquarters}
                           value={currentInput}
                           onChange={(e) => setLimitInputs({
                             ...limitInputs,
                             [ps.product_name]: Math.max(0, parseInt(e.target.value) || 0),
                           })}
-                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-black text-base text-slate-900 text-center focus:outline-none focus:border-red-500 shadow-inner"
+                          className={`w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-black text-base text-slate-900 text-center shadow-inner ${
+                            isHeadquarters ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'focus:outline-none focus:border-red-500'
+                          }`}
                         />
                         <span className="text-xs font-bold text-slate-500 flex-shrink-0">個 (0:無制限)</span>
                       </div>
@@ -342,12 +353,15 @@ export default function XmasFactoryPage() {
                         type="number"
                         min={0}
                         step={1}
+                        disabled={isHeadquarters}
                         value={currentInput}
                         onChange={(e) => setLimitInputs({
                           ...limitInputs,
                           [ps.product_name]: Math.max(0, parseInt(e.target.value) || 0),
                         })}
-                        className="w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg font-black text-sm text-slate-900 text-center focus:outline-none focus:border-red-500"
+                        className={`w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg font-black text-sm text-slate-900 text-center ${
+                          isHeadquarters ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'focus:outline-none focus:border-red-500'
+                        }`}
                       />
                     </div>
                   </div>

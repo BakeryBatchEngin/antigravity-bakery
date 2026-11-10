@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
-const VALID_ROLES = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory'];
+const VALID_ROLES = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory', 'xmas_headquarters'];
 
 /**
  * クリスマスアカウント一覧取得
