@@ -53,13 +53,18 @@ export default function LoginPage() {
     <div className={`min-h-screen flex flex-col items-center justify-center ${bgClass} p-4 sm:p-6`}>
       <div className="w-full max-w-md">
         
-        {/* ロゴ・タイトル部分 */}
-        <div className="text-center mb-8">
-          <h1 className={`text-3xl sm:text-4xl font-extrabold ${textClass} tracking-tight leading-tight`}>
-            Bakery Engine for Batch and Loss Management
-          </h1>
-          <p className={`mt-3 font-medium text-lg ${subtitleClass}`}>
-            仕込み支援・ロス管理 ベーカリーツール
+        {/* ロゴ・タイトル部分（クリスマス期間限定ロゴ: 12/25まで） */}
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/img/xmas/joyeux-noel-2026.png"
+              alt="Joyeux Noël 2026 ご予約受付中 - Maison Kayser Paris"
+              className="w-full max-w-[380px] sm:max-w-[440px] h-auto object-contain drop-shadow-sm transition-transform hover:scale-105 duration-300"
+            />
+          </div>
+          <p className={`font-black text-sm sm:text-base tracking-wide ${subtitleClass}`}>
+            ベーカリー支援ツール　Christmas Ver.
           </p>
         </div>
 
