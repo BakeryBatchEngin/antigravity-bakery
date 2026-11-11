@@ -539,7 +539,7 @@ export default function XmasOrdersPage() {
                 {user?.role === 'tokyo_store' && '【首都圏店舗】お客様からのクリスマスケーキ予約を入力・管理します。'}
                 {user?.role === 'regional_store' && '【地方店舗】お客様からのクリスマスケーキ予約を入力・管理します。'}
                 {isManager && '【クリスマスマネージャー】全店舗の受注閲覧、および店舗切替による代理入力・編集が可能です。'}
-                {isFactory && '【工場アカウント】全店舗の受注データとりまとめ一覧を閲覧できます。'}
+                {isFactory && '【工場アカウント】全店舗の受注一覧の閲覧、および各受注データの修正・削除が可能です。'}
                 {isHeadquarters && '【本部アカウント】全店舗の受注状況を閲覧できます（閲覧専用）。'}
                 {isAdminOrSuper && '【管理者モード】全店舗の受注閲覧・代理登録が可能です。'}
               </p>
@@ -621,9 +621,9 @@ export default function XmasOrdersPage() {
         )}
 
         {/* ======================================================== */}
-        {/* 受注入力フォーム（※工場アカウント・本部アカウントの場合は非表示！） */}
+        {/* 受注入力フォーム（※工場アカウントは編集中のみ表示、本部アカウントは常時非表示） */}
         {/* ======================================================== */}
-        {!isFactory && !isHeadquarters && (
+        {!isHeadquarters && (!isFactory || editingOrderId !== null) && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 relative print-page-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-5 border-b border-slate-200 mb-6">
               <div className="flex flex-wrap items-center gap-3">
@@ -1110,7 +1110,7 @@ export default function XmasOrdersPage() {
                   <th className="px-4 py-3.5 text-xs font-bold uppercase whitespace-nowrap">
                     備考
                   </th>
-                  {!isFactory && !isHeadquarters && (
+                  {!isHeadquarters && (
                     <th className="px-4 py-3.5 text-xs font-bold uppercase whitespace-nowrap text-right no-print">
                       操作
                     </th>
@@ -1120,7 +1120,7 @@ export default function XmasOrdersPage() {
               <tbody className="divide-y divide-slate-200">
                 {sortedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={canSwitchStore ? (isFactory || isHeadquarters ? 8 : 9) : 8} className="px-6 py-12 text-center text-slate-400 font-bold">
+                    <td colSpan={canSwitchStore ? (isHeadquarters ? 8 : 9) : (isHeadquarters ? 7 : 8)} className="px-6 py-12 text-center text-slate-400 font-bold">
                       登録済みの受注データはまだありません。
                     </td>
                   </tr>
@@ -1214,8 +1214,8 @@ export default function XmasOrdersPage() {
                           {order.memo || '-'}
                         </td>
 
-                        {/* 操作（工場・本部アカウントには不要なので非表示） */}
-                        {!isFactory && !isHeadquarters && (
+                        {/* 操作（本部アカウントのみ非表示、工場・マネージャー・店舗・管理者は表示） */}
+                        {!isHeadquarters && (
                           <td className="px-4 py-3.5 whitespace-nowrap text-right text-sm no-print">
                             <div className="flex items-center justify-end gap-2">
                               <button

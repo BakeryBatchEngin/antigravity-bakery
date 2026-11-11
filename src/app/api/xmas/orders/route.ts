@@ -390,7 +390,7 @@ export async function PUT(request: Request) {
     const effectivePaymentStatus = order_route === 'ネット予約' ? '支払済' : (payment_status || 'お渡し支払');
 
     let updateAccountId = existingOrder.account_id;
-    if ((user.role === 'xmas_manager' || user.role === 'admin' || user.role === 'super_admin') && target_account_id) {
+    if ((user.role === 'xmas_manager' || user.role === 'xmas_factory' || user.role === 'admin' || user.role === 'super_admin') && target_account_id) {
       updateAccountId = Number(target_account_id);
     }
 
@@ -481,6 +481,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: '他社の受注は削除できません' }, { status: 403 });
     }
 
+    // 明細レコードを明示的に削除してから受注本体を削除
+    await db.run(`DELETE FROM xmas_order_items WHERE order_id = $1`, [Number(id)]);
     await db.run(`DELETE FROM xmas_orders WHERE id = $1`, [Number(id)]);
 
     return NextResponse.json({ success: true, message: '受注を削除しました' });
