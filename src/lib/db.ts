@@ -639,6 +639,8 @@ export async function initDb() {
       display_name TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory', 'xmas_headquarters')),
       is_active BOOLEAN DEFAULT TRUE,
+      failed_attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -692,6 +694,15 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_xmas_orders_delivery ON xmas_orders(delivery_date, delivery_time);
     CREATE INDEX IF NOT EXISTS idx_xmas_order_items_order_id ON xmas_order_items(order_id);
     CREATE INDEX IF NOT EXISTS idx_xmas_accounts_tenant ON xmas_accounts(tenant_id);
+
+    ALTER TABLE xmas_accounts ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE xmas_accounts ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL;
+
+    ALTER TABLE xmas_accounts ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE xmas_orders ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE xmas_order_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE xmas_product_limits ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE xmas_settings ENABLE ROW LEVEL SECURITY;
   `);
 
   console.log('PostgreSQL Database initialized successfully.');

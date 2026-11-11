@@ -14,6 +14,9 @@ type XmasAccount = {
   is_active: boolean;
   created_at: string;
   tenant_name?: string;
+  order_count?: number;
+  failed_attempts?: number;
+  locked_until?: string | null;
 };
 
 type Tenant = {
@@ -169,7 +172,12 @@ export default function XmasAccountsPage() {
   };
 
   const handleDelete = async (account: XmasAccount) => {
-    if (!confirm(`クリスマスアカウント「${account.display_name}（${account.username}）」を削除しますか？\n※関連する受注データも削除されます。`)) {
+    if ((account.order_count || 0) > 0) {
+      alert(`「${account.display_name}」には受注データが ${account.order_count} 件存在するため削除できません。\n\n注文データを保護するため、削除ではなく「編集」ボタンからステータスを「停止中（無効化）」に変更してください。`);
+      return;
+    }
+
+    if (!confirm(`クリスマスアカウント「${account.display_name}（${account.username}）」を削除しますか？`)) {
       return;
     }
 
@@ -184,6 +192,25 @@ export default function XmasAccountsPage() {
       fetchAccounts();
     } catch (err: any) {
       alert(err.message || '削除中にエラーが発生しました');
+    }
+  };
+
+  const handleUnlock = async (account: XmasAccount) => {
+    if (!confirm(`「${account.display_name}」のログインロックを解除しますか？`)) return;
+
+    try {
+      const res = await fetch('/api/admin/xmas-accounts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: account.id, unlock: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ロック解除に失敗しました');
+
+      setSuccessMessage(`「${account.display_name}」のログインロックを解除しました`);
+      fetchAccounts();
+    } catch (err: any) {
+      alert(err.message || 'エラーが発生しました');
     }
   };
 
@@ -262,6 +289,7 @@ export default function XmasAccountsPage() {
                   <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase">店舗名・表示名</th>
                   <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase">ログインID</th>
                   <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase">種別 / 役割</th>
+                  <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase text-center">受注数</th>
                   <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase">状態</th>
                   <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase text-right">操作</th>
                 </tr>
@@ -269,13 +297,16 @@ export default function XmasAccountsPage() {
               <tbody className="divide-y divide-slate-200">
                 {accounts.length === 0 ? (
                   <tr>
-                    <td colSpan={isSuperAdmin ? 6 : 5} className="px-6 py-12 text-center text-slate-400 font-medium">
+                    <td colSpan={isSuperAdmin ? 7 : 6} className="px-6 py-12 text-center text-slate-400 font-medium">
                       クリスマス専用アカウントはまだ登録されていません。「＋ 新規アカウント作成」から追加してください。
                     </td>
                   </tr>
                 ) : (
                   accounts.map((acc) => {
                     const roleInfo = ROLE_LABELS[acc.role] || { label: acc.role, color: 'bg-slate-100 text-slate-800 border-slate-200', icon: '👤' };
+                    const hasOrders = (acc.order_count || 0) > 0;
+                    const isLocked = Boolean(acc.locked_until && new Date(acc.locked_until) > new Date());
+
                     return (
                       <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
                         {isSuperAdmin && (
@@ -297,16 +328,41 @@ export default function XmasAccountsPage() {
                             <span>{roleInfo.label}</span>
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {acc.is_active ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                              有効
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          {hasOrders ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black bg-red-50 text-red-700 border border-red-200">
+                              {acc.order_count} 件
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-600">
-                              停止中
-                            </span>
+                            <span className="text-xs text-slate-400 font-bold">-</span>
                           )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 items-start">
+                            {isLocked ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-red-600 text-white animate-pulse">
+                                  🔒 ロック中
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlock(acc)}
+                                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline px-1"
+                                  title="ログイン失敗ロックを直ちに解除します"
+                                >
+                                  解除
+                                </button>
+                              </div>
+                            ) : acc.is_active ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                                有効
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-600">
+                                停止中
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end gap-2">
@@ -316,12 +372,21 @@ export default function XmasAccountsPage() {
                             >
                               編集
                             </button>
-                            <button
-                              onClick={() => handleDelete(acc)}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-bold text-xs transition-colors"
-                            >
-                              削除
-                            </button>
+                            {hasOrders ? (
+                              <span
+                                className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded-lg font-bold text-xs cursor-not-allowed select-none"
+                                title="受注データが存在するため削除できません。編集画面から停止（無効化）してください。"
+                              >
+                                受注あり
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleDelete(acc)}
+                                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-bold text-xs transition-colors"
+                              >
+                                削除
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -424,6 +489,11 @@ export default function XmasAccountsPage() {
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-red-500"
                     required={!editingAccount}
                   />
+                  {editingAccount && (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      ※パスワードを更新すると、ログイン失敗ロックがかかっている場合も自動で解除されます。
+                    </p>
+                  )}
                 </div>
 
                 {/* 有効/無効（編集時のみ） */}

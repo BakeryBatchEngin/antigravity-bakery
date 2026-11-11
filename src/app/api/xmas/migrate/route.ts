@@ -82,6 +82,15 @@ export async function POST() {
       CREATE INDEX IF NOT EXISTS idx_xmas_orders_delivery ON xmas_orders(delivery_date, delivery_time);
       CREATE INDEX IF NOT EXISTS idx_xmas_order_items_order_id ON xmas_order_items(order_id);
       CREATE INDEX IF NOT EXISTS idx_xmas_accounts_tenant ON xmas_accounts(tenant_id);
+
+      ALTER TABLE xmas_accounts ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE xmas_accounts ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL;
+
+      ALTER TABLE xmas_accounts ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE xmas_orders ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE xmas_order_items ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE xmas_product_limits ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE xmas_settings ENABLE ROW LEVEL SECURITY;
     `);
 
     return NextResponse.json({ success: true, message: 'クリスマス専用テーブルの準備が完了しました' });

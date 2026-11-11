@@ -24,8 +24,10 @@ export async function GET(request: Request) {
 
     const db = await getDb();
     let query = `
-      SELECT a.id, a.tenant_id, a.username, a.display_name, a.role, a.is_active, a.created_at,
-             t.tenant_name
+      SELECT a.id, a.tenant_id, a.username, a.display_name, a.role, a.is_active,
+             COALESCE(a.failed_attempts, 0) as failed_attempts, a.locked_until, a.created_at,
+             t.tenant_name,
+             (SELECT COUNT(*) FROM xmas_orders o WHERE o.account_id = a.id) as order_count
       FROM xmas_accounts a
       LEFT JOIN tenants t ON a.tenant_id = t.id
       WHERE 1=1
@@ -129,7 +131,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { id, display_name, role, password, is_active } = body;
+    const { id, display_name, role, password, is_active, unlock } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'アカウントIDが指定されていません' }, { status: 400 });
@@ -169,6 +171,13 @@ export async function PUT(request: Request) {
       const passwordHash = await bcrypt.hash(password, 10);
       params.push(passwordHash);
       updateFields.push(`password_hash = $${params.length}`);
+      // パスワード変更時はロックも自動解除
+      updateFields.push(`failed_attempts = 0`);
+      updateFields.push(`locked_until = NULL`);
+    } else if (unlock === true) {
+      // 明示的なロック解除
+      updateFields.push(`failed_attempts = 0`);
+      updateFields.push(`locked_until = NULL`);
     }
 
     if (updateFields.length === 0) {
@@ -220,6 +229,18 @@ export async function DELETE(request: Request) {
 
     if (user.role !== 'super_admin' && account.tenant_id !== user.tenant_id) {
       return NextResponse.json({ error: '他社のアカウントは操作できません' }, { status: 403 });
+    }
+
+    // 安全装置: 受注データが存在するアカウントの削除を厳格にブロック
+    const orderCountRow = await db.get(
+      `SELECT COUNT(*) as cnt FROM xmas_orders WHERE account_id = $1`,
+      [Number(id)]
+    );
+    const orderCount = Number(orderCountRow?.cnt || 0);
+    if (orderCount > 0) {
+      return NextResponse.json({
+        error: `このアカウントには受注データが ${orderCount} 件存在するため削除できません。注文データを保持したままログインを停止するには「無効化（編集でステータス変更）」をご利用ください。`
+      }, { status: 409 });
     }
 
     await db.run(`DELETE FROM xmas_accounts WHERE id = $1`, [Number(id)]);

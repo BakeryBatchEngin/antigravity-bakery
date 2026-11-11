@@ -31,6 +31,32 @@ async function handleLoginFailure(db: any, user: any): Promise<{ locked: boolean
   }
 }
 
+/**
+ * クリスマスアカウント用ログイン失敗処理（フェイルセーフ対応）
+ */
+async function handleXmasLoginFailure(db: any, account: any): Promise<{ locked: boolean; remainingMinutes: number }> {
+  try {
+    const currentAttempts = (account.failed_attempts || 0) + 1;
+    if (currentAttempts >= MAX_FAILED_ATTEMPTS) {
+      const lockUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+      await db.run(
+        `UPDATE xmas_accounts SET failed_attempts = $1, locked_until = $2 WHERE id = $3`,
+        [currentAttempts, lockUntil.toISOString(), account.id]
+      );
+      return { locked: true, remainingMinutes: LOCKOUT_MINUTES };
+    } else {
+      await db.run(
+        `UPDATE xmas_accounts SET failed_attempts = $1 WHERE id = $2`,
+        [currentAttempts, account.id]
+      );
+      return { locked: false, remainingMinutes: 0 };
+    }
+  } catch (err) {
+    console.error('Failed to update xmas failed_attempts (failsafe):', err);
+    return { locked: false, remainingMinutes: 0 };
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { username, pin, password } = await request.json();
@@ -52,10 +78,44 @@ export async function POST(request: Request) {
       );
 
       if (xmasAccount) {
+        // クリスマスアカウントのロック状態チェック
+        if (xmasAccount.locked_until) {
+          const lockExpiry = new Date(xmasAccount.locked_until);
+          const now = new Date();
+          if (lockExpiry > now) {
+            const remainingMinutes = Math.max(1, Math.ceil((lockExpiry.getTime() - now.getTime()) / (60 * 1000)));
+            return NextResponse.json({
+              error: `ログイン失敗が続いたため、アカウントが一時的にロックされています。あと約${remainingMinutes}分後に再度お試しいただくか、管理者にお問い合わせください。`,
+              locked: true,
+              remainingMinutes,
+            }, { status: 423 }); // 423 Locked
+          }
+        }
+
         const inputPw = password || pin || '';
         const isMatch = await bcrypt.compare(inputPw, xmasAccount.password_hash);
         if (!isMatch) {
+          const failResult = await handleXmasLoginFailure(db, xmasAccount);
+          if (failResult.locked) {
+            return NextResponse.json({
+              error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
+              locked: true,
+              remainingMinutes: failResult.remainingMinutes,
+            }, { status: 423 });
+          }
           return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
+        }
+
+        // 認証成功時：失敗カウントとロックをリセット（フェイルセーフ）
+        if (xmasAccount.failed_attempts > 0 || xmasAccount.locked_until !== null) {
+          try {
+            await db.run(
+              `UPDATE xmas_accounts SET failed_attempts = 0, locked_until = NULL WHERE id = $1`,
+              [xmasAccount.id]
+            );
+          } catch (e) {
+            console.error('Failed to reset xmas failed_attempts (failsafe):', e);
+          }
         }
 
         const nowSec = Math.floor(Date.now() / 1000);
