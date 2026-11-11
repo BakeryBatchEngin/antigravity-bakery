@@ -150,6 +150,16 @@ export async function GET(request: Request) {
       is_max_reached: limitMap[p] > 0 && (productTotalCount[p] || 0) >= limitMap[p],
     }));
 
+    // ロック状態の取得
+    let isOrderLocked = false;
+    if (user.tenant_id) {
+      const lockRow = await db.get(
+        `SELECT setting_value FROM xmas_settings WHERE tenant_id = $1 AND setting_key = 'is_order_locked'`,
+        [user.tenant_id]
+      );
+      isOrderLocked = lockRow?.setting_value === 'true';
+    }
+
     return NextResponse.json({
       dates: DELIVERY_DATES,
       products: XMAS_PRODUCTS,
@@ -157,6 +167,7 @@ export async function GET(request: Request) {
       dailyMatrix,
       productSummaries,
       storeMatrixByDate,
+      is_order_locked: isOrderLocked,
     });
   } catch (err: any) {
     console.error('Failed to get xmas factory data:', err);

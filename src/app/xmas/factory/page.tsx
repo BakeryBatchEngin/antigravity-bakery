@@ -39,6 +39,8 @@ export default function XmasFactoryPage() {
 
   const [loading, setLoading] = useState(true);
   const [savingLimits, setSavingLimits] = useState(false);
+  const [locking, setLocking] = useState(false);
+  const [isOrderLocked, setIsOrderLocked] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // データ
@@ -90,6 +92,7 @@ export default function XmasFactoryPage() {
 
       setProducts(sortedProducts.length > 0 ? sortedProducts : (data.products || []));
       setStoreAccounts(data.storeAccounts || []);
+      setIsOrderLocked(data.is_order_locked === true);
 
       // サマリーも整頓
       const summaryMap: Record<string, ProductSummary> = {};
@@ -112,6 +115,37 @@ export default function XmasFactoryPage() {
       setMessage({ type: 'error', text: err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 店舗発注ロックの切替
+  const handleToggleLock = async () => {
+    const nextLocked = !isOrderLocked;
+    const confirmMsg = nextLocked
+      ? '【確認】店舗アカウントからの新規発注・変更を締め切りますか？\n\n・各店舗は閲覧専用となります（新規発注・修正・削除不可）。\n・マネージャーおよび工場アカウントは、ロック中も引き続き注文の代理入力・編集が可能です。'
+      : '【確認】店舗アカウントからの発注ロックを解除し、通常受付を再開しますか？';
+    if (!confirm(confirmMsg)) return;
+
+    setLocking(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/xmas/factory/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_locked: nextLocked }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ロック切替に失敗しました');
+
+      setIsOrderLocked(nextLocked);
+      setMessage({
+        type: 'success',
+        text: data.message || (nextLocked ? '店舗発注を締め切りました（ロック中）' : '店舗発注の受付を再開しました'),
+      });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLocking(false);
     }
   };
 
@@ -172,6 +206,62 @@ export default function XmasFactoryPage() {
             <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-600 font-bold px-2">✕</button>
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* 店舗発注受付ロック管理バー（12/15締切対応） */}
+        {/* ======================================================== */}
+        <div className={`rounded-3xl p-5 sm:p-6 border transition-all ${
+          isOrderLocked
+            ? 'bg-red-50/80 border-red-200 shadow-sm'
+            : 'bg-emerald-50/80 border-emerald-200 shadow-sm'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <span className="text-3xl">{isOrderLocked ? '🔒' : '🟢'}</span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-black text-slate-900">
+                    店舗からの新規発注・変更ロック
+                  </h2>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                    isOrderLocked
+                      ? 'bg-red-600 text-white'
+                      : 'bg-emerald-600 text-white'
+                  }`}>
+                    {isOrderLocked ? '締切ロック中（店舗は閲覧のみ）' : '通常受付中（全店入力可）'}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
+                  {isOrderLocked
+                    ? '現在、各店舗アカウントからの新規発注・修正・削除は締め切られています。※マネージャー・工場・管理者のみ代理入力・編集が可能です。'
+                    : '店舗アカウントから新規発注および内容の変更・削除が可能です。12月15日いっぱいで締め切る際は、右のボタンでロックしてください。'}
+                </p>
+              </div>
+            </div>
+
+            {!isHeadquarters && (
+              <button
+                type="button"
+                onClick={handleToggleLock}
+                disabled={locking}
+                className={`px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50 ${
+                  isOrderLocked
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-red-600 hover:bg-red-700 text-white'
+                }`}
+              >
+                <span>{isOrderLocked ? '🔓' : '🔒'}</span>
+                <span>
+                  {locking
+                    ? '処理中...'
+                    : isOrderLocked
+                    ? 'ロックを解除して受付再開'
+                    : '店舗発注を締め切る（ロック）'}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* ======================================================== */}
         {/* 一番上: 商品別合算受注数 ＆ 最大受注数設定 ウィンドウ */}

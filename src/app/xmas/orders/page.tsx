@@ -85,6 +85,7 @@ export default function XmasOrdersPage() {
   const [orders, setOrders] = useState<XmasOrder[]>([]);
   const [productSummaries, setProductSummaries] = useState<ProductSummary[]>([]);
   const [accounts, setAccounts] = useState<StoreAccount[]>([]);
+  const [isOrderLocked, setIsOrderLocked] = useState<boolean>(false);
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -161,6 +162,7 @@ export default function XmasOrdersPage() {
 
       setOrders(data.orders || []);
       setProductSummaries(data.productSummaries || []);
+      setIsOrderLocked(data.isOrderLocked === true);
       if (data.accounts) {
         setAccounts(data.accounts);
         if (data.accounts.length > 0 && !formData.target_account_id) {
@@ -486,7 +488,14 @@ export default function XmasOrdersPage() {
   const isHeadquarters = user?.role === 'xmas_headquarters';
   const isManager = user?.role === 'xmas_manager';
   const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super_admin';
+  const isStore = user?.role === 'tokyo_store' || user?.role === 'regional_store';
   const canSwitchStore = isManager || isFactory || isHeadquarters || isAdminOrSuper;
+
+  // 店舗アカウントかつロック中の場合は「閲覧のみ」モード
+  const isStoreReadonlyLocked = isStore && isOrderLocked;
+
+  // 編集・削除操作が可能なアカウント（本部以外、かつ「店舗ロック中ではない」こと）
+  const canOperateOrders = !isHeadquarters && !isStoreReadonlyLocked;
 
   // 上限到達マップ
   const limitReachedMap = productSummaries.reduce((acc, curr) => {
@@ -534,6 +543,11 @@ export default function XmasOrdersPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                   クリスマス受発注 2026
                 </h1>
+                {isOrderLocked && (
+                  <span className="px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-800 border border-red-200">
+                    🔒 発注締切中
+                  </span>
+                )}
               </div>
               <p className="mt-2 text-slate-600 text-sm sm:text-base font-medium">
                 {user?.role === 'tokyo_store' && '【首都圏店舗】お客様からのクリスマスケーキ予約を入力・管理します。'}
@@ -620,10 +634,30 @@ export default function XmasOrdersPage() {
           </div>
         )}
 
+        {/* 店舗アカウント締切ロック中の案内バナー（no-print） */}
+        {isStoreReadonlyLocked && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 sm:p-6 text-amber-950 flex items-start sm:items-center gap-4 no-print shadow-sm">
+            <span className="text-3xl">🔒</span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-amber-600 text-white font-black text-xs px-2.5 py-0.5 rounded-full">
+                  受注受付終了（閲覧のみ）
+                </span>
+                <h3 className="font-black text-base sm:text-lg">
+                  12月15日をもって、店舗からの新規受注登録・内容変更の受付は終了いたしました
+                </h3>
+              </div>
+              <p className="text-xs sm:text-sm text-amber-900 font-medium mt-1">
+                現在は登録済み受注データの閲覧、印刷、およびExcel出力のみご利用いただけます。数量の追加や登録内容の修正が必要な場合は、クリスマスマネージャーまたは工場へ直接ご連絡ください。
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ======================================================== */}
-        {/* 受注入力フォーム（※工場アカウントは編集中のみ表示、本部アカウントは常時非表示） */}
+        {/* 受注入力フォーム（※工場アカウントは編集中のみ表示、本部・ロック中店舗は非表示） */}
         {/* ======================================================== */}
-        {!isHeadquarters && (!isFactory || editingOrderId !== null) && (
+        {!isHeadquarters && !isStoreReadonlyLocked && (!isFactory || editingOrderId !== null) && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 relative print-page-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-5 border-b border-slate-200 mb-6">
               <div className="flex flex-wrap items-center gap-3">
@@ -1110,7 +1144,7 @@ export default function XmasOrdersPage() {
                   <th className="px-4 py-3.5 text-xs font-bold uppercase whitespace-nowrap">
                     備考
                   </th>
-                  {!isHeadquarters && (
+                  {canOperateOrders && (
                     <th className="px-4 py-3.5 text-xs font-bold uppercase whitespace-nowrap text-right no-print">
                       操作
                     </th>
@@ -1120,7 +1154,7 @@ export default function XmasOrdersPage() {
               <tbody className="divide-y divide-slate-200">
                 {sortedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={canSwitchStore ? (isHeadquarters ? 8 : 9) : (isHeadquarters ? 7 : 8)} className="px-6 py-12 text-center text-slate-400 font-bold">
+                    <td colSpan={canSwitchStore ? (canOperateOrders ? 9 : 8) : (canOperateOrders ? 8 : 7)} className="px-6 py-12 text-center text-slate-400 font-bold">
                       登録済みの受注データはまだありません。
                     </td>
                   </tr>
@@ -1214,8 +1248,8 @@ export default function XmasOrdersPage() {
                           {order.memo || '-'}
                         </td>
 
-                        {/* 操作（本部アカウントのみ非表示、工場・マネージャー・店舗・管理者は表示） */}
-                        {!isHeadquarters && (
+                        {/* 操作（本部アカウントおよびロック中の店舗は非表示） */}
+                        {canOperateOrders && (
                           <td className="px-4 py-3.5 whitespace-nowrap text-right text-sm no-print">
                             <div className="flex items-center justify-end gap-2">
                               <button

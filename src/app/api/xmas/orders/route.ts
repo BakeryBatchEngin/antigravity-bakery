@@ -143,10 +143,21 @@ export async function GET(request: Request) {
       };
     });
 
+    // テナントの発注ロック状態を取得
+    let isOrderLocked = false;
+    if (user.tenant_id) {
+      const lockRow = await db.get(
+        `SELECT setting_value FROM xmas_settings WHERE tenant_id = $1 AND setting_key = 'is_order_locked'`,
+        [user.tenant_id]
+      );
+      isOrderLocked = lockRow?.setting_value === 'true';
+    }
+
     return NextResponse.json({
       orders: ordersWithItems,
       productSummaries,
       accounts: availableAccounts,
+      isOrderLocked,
       currentUser: {
         id: user.id,
         role: user.role,
@@ -157,6 +168,22 @@ export async function GET(request: Request) {
     console.error('Failed to get xmas orders:', err);
     return NextResponse.json({ error: '受注一覧の取得に失敗しました', details: err.message }, { status: 500 });
   }
+}
+
+/**
+ * 店舗アカウントの発注ロック判定ヘルパー
+ * 工場、マネージャー、システム管理者はロック中であっても操作可能
+ */
+async function isStoreLocked(db: any, tenantId: number | null | undefined, userRole: string): Promise<boolean> {
+  if (['xmas_manager', 'xmas_factory', 'admin', 'super_admin'].includes(userRole)) {
+    return false;
+  }
+  if (!tenantId) return false;
+  const setting = await db.get(
+    `SELECT setting_value FROM xmas_settings WHERE tenant_id = $1 AND setting_key = 'is_order_locked'`,
+    [tenantId]
+  );
+  return setting?.setting_value === 'true';
 }
 
 /**
@@ -171,6 +198,15 @@ export async function POST(request: Request) {
 
     if (user.role === 'xmas_headquarters') {
       return NextResponse.json({ error: '本部アカウントは閲覧専用のため、登録操作はできません' }, { status: 403 });
+    }
+
+    const db = await getDb();
+
+    // ロック判定（店舗アカウントはロック中に新規発注不可）
+    if (await isStoreLocked(db, user.tenant_id, user.role)) {
+      return NextResponse.json({
+        error: '店舗からの新規発注・変更の受付は終了いたしました（12/15締切）。ご注文の修正・追加はマネージャーまたは工場へご連絡ください。'
+      }, { status: 403 });
     }
 
     const body = await request.json();
@@ -205,8 +241,6 @@ export async function POST(request: Request) {
 
     // ネット予約の場合は自動で「支払済」にする
     const effectivePaymentStatus = order_route === 'ネット予約' ? '支払済' : (payment_status || 'お渡し支払');
-
-    const db = await getDb();
 
     // 対象アカウントIDの決定
     let effectiveAccountId = user.id;
@@ -335,6 +369,14 @@ export async function PUT(request: Request) {
     }
 
     const db = await getDb();
+
+    // ロック判定（店舗アカウントはロック中に編集・修正不可）
+    if (await isStoreLocked(db, user.tenant_id, user.role)) {
+      return NextResponse.json({
+        error: '店舗からの新規発注・変更の受付は終了いたしました（12/15締切）。ご注文の修正・追加はマネージャーまたは工場へご連絡ください。'
+      }, { status: 403 });
+    }
+
     const existingOrder = await db.get(`SELECT * FROM xmas_orders WHERE id = $1`, [id]);
     if (!existingOrder) {
       return NextResponse.json({ error: '対象の受注が見つかりません' }, { status: 404 });
@@ -467,6 +509,14 @@ export async function DELETE(request: Request) {
     }
 
     const db = await getDb();
+
+    // ロック判定（店舗アカウントはロック中に削除不可）
+    if (await isStoreLocked(db, user.tenant_id, user.role)) {
+      return NextResponse.json({
+        error: '店舗からの新規発注・変更の受付は終了いたしました（12/15締切）。ご注文の修正・追加はマネージャーまたは工場へご連絡ください。'
+      }, { status: 403 });
+    }
+
     const order = await db.get(`SELECT * FROM xmas_orders WHERE id = $1`, [Number(id)]);
     if (!order) {
       return NextResponse.json({ error: '対象の受注が見つかりません' }, { status: 404 });

@@ -69,6 +69,15 @@ export async function POST() {
         UNIQUE (tenant_id, product_name)
       );
 
+      CREATE TABLE IF NOT EXISTS xmas_settings (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        setting_key TEXT NOT NULL,
+        setting_value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, setting_key)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_xmas_orders_tenant_account ON xmas_orders(tenant_id, account_id);
       CREATE INDEX IF NOT EXISTS idx_xmas_orders_delivery ON xmas_orders(delivery_date, delivery_time);
       CREATE INDEX IF NOT EXISTS idx_xmas_order_items_order_id ON xmas_order_items(order_id);
