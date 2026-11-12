@@ -7,7 +7,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 
 // メインケーキ4種とおまけ商品2種（指定通りの並び順）
 const XMAS_PRODUCTS = [
-  'デリスドゥラス',
+  'デリスドゥフランス',
   'リンツァーロール',
   'ブッシュカイザー',
   'ブッシュ エキゾチック',
@@ -17,7 +17,8 @@ const XMAS_PRODUCTS = [
 
 // ケーキの写真画像マッピング
 const PRODUCT_IMAGES: Record<string, string> = {
-  'デリスドゥラス': '/img/xmas/delice-de-las.png',
+  'デリスドゥフランス': '/img/xmas/delice-de-france.png',
+  'デリスドゥラス': '/img/xmas/delice-de-france.png',
   'リンツァーロール': '/img/xmas/linzer-roll.png',
   'ブッシュカイザー': '/img/xmas/buche-kaiser.png',
   'ブッシュ エキゾチック': '/img/xmas/buche-exotique.png',

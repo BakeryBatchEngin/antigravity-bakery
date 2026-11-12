@@ -16,8 +16,48 @@ const DELIVERY_DATES = [
 ];
 
 // メインのケーキ4種とおまけ商品2種
-const MAIN_CAKES = ['デリスドゥラス', 'リンツァーロール', 'ブッシュカイザー', 'ブッシュ エキゾチック'];
+const MAIN_CAKES = ['デリスドゥフランス', 'リンツァーロール', 'ブッシュカイザー', 'ブッシュ エキゾチック'];
 const SIDE_PRODUCTS = ['シュトーレン', 'シュトーレン ハーフ'];
+
+// 表の見出し用の商品名改行表示（印刷時の重なり防止・見やすさ向上）
+const renderProductNameHeader = (name: string) => {
+  switch (name) {
+    case 'デリスドゥフランス':
+      return (
+        <span className="inline-block leading-tight text-center">
+          デリスドゥ<br />フランス
+        </span>
+      );
+    case 'リンツァーロール':
+      return (
+        <span className="inline-block leading-tight text-center">
+          リンツァー<br />ロール
+        </span>
+      );
+    case 'ブッシュカイザー':
+      return (
+        <span className="inline-block leading-tight text-center">
+          ブッシュ<br />カイザー
+        </span>
+      );
+    case 'ブッシュ エキゾチック':
+    case 'ブッシュエキゾチック':
+      return (
+        <span className="inline-block leading-tight text-center">
+          ブッシュ<br />エキゾチック
+        </span>
+      );
+    case 'シュトーレン ハーフ':
+    case 'シュトーレンハーフ':
+      return (
+        <span className="inline-block leading-tight text-center">
+          シュトーレン<br />ハーフ
+        </span>
+      );
+    default:
+      return <span className="inline-block leading-tight text-center">{name}</span>;
+  }
+};
 
 type ProductSummary = {
   product_name: string;
@@ -190,13 +230,13 @@ export default function XmasFactoryPage() {
   const sideProductSummaries = productSummaries.filter(ps => SIDE_PRODUCTS.includes(ps.product_name));
 
   return (
-    <div className="min-h-screen bg-slate-50 py-6 px-3 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto flex flex-col gap-8">
+    <div className="min-h-screen bg-slate-50 py-6 px-3 sm:px-6 lg:px-8 print:p-0 print:bg-white print:min-h-0">
+      <div className="max-w-7xl mx-auto flex flex-col gap-8 print:max-w-none print:w-full print:gap-0">
 
         {/* メッセージ通知 */}
         {message && (
           <div
-            className={`p-4 rounded-2xl font-bold flex items-center justify-between border ${
+            className={`p-4 rounded-2xl font-bold flex items-center justify-between border no-print ${
               message.type === 'success'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : 'bg-red-50 border-red-200 text-red-800'
@@ -210,7 +250,7 @@ export default function XmasFactoryPage() {
         {/* ======================================================== */}
         {/* 店舗発注受付ロック管理バー（12/15締切対応） */}
         {/* ======================================================== */}
-        <div className={`rounded-3xl p-5 sm:p-6 border transition-all ${
+        <div className={`rounded-3xl p-5 sm:p-6 border transition-all no-print ${
           isOrderLocked
             ? 'bg-red-50/80 border-red-200 shadow-sm'
             : 'bg-emerald-50/80 border-emerald-200 shadow-sm'
@@ -266,7 +306,7 @@ export default function XmasFactoryPage() {
         {/* ======================================================== */}
         {/* 一番上: 商品別合算受注数 ＆ 最大受注数設定 ウィンドウ */}
         {/* ======================================================== */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 no-print">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-200 mb-6">
             <div>
               <div className="flex items-center gap-3">
@@ -464,7 +504,7 @@ export default function XmasFactoryPage() {
         {/* ======================================================== */}
         {/* 真ん中: 商品別・日別出荷数 ウィンドウ */}
         {/* ======================================================== */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 no-print">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 mb-6">
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
@@ -581,8 +621,9 @@ export default function XmasFactoryPage() {
         {/* ======================================================== */}
         {/* 一番下: 🏭 工場出荷集計 ＆ 店舗別・商品別の受注内訳 ウィンドウ */}
         {/* ======================================================== */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 mb-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 print:p-0 print:border-none print:shadow-none print:rounded-none">
+          {/* 画面用ヘッダー ＆ 操作ツールバー */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-6 border-b border-slate-200 mb-6 no-print">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🏭</span>
@@ -591,49 +632,88 @@ export default function XmasFactoryPage() {
                 </h2>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                納品日（お渡し日）を選択して、店舗ごとのケーキ仕分け数量を確認できます。
+                納品日（お渡し日）を選択して、店舗ごとのケーキ仕分け数量を確認・印刷できます。
               </p>
             </div>
 
-            {/* 納品日切り替えタブ */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 self-start md:self-auto">
-              {DELIVERY_DATES.map((d) => (
-                <button
-                  key={d.value}
-                  onClick={() => setSelectedDeliveryDate(d.value)}
-                  className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
-                    selectedDeliveryDate === d.value
-                      ? 'bg-red-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {d.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* 納品日切り替えタブ */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+                {DELIVERY_DATES.map((d) => (
+                  <button
+                    key={d.value}
+                    onClick={() => setSelectedDeliveryDate(d.value)}
+                    className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                      selectedDeliveryDate === d.value
+                        ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-400/30'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* 印刷ボタン */}
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 whitespace-nowrap ml-auto ring-2 ring-blue-400/20"
+                title="選択中の納品日の仕分け表をA4用紙1枚で印刷します"
+              >
+                <span className="text-base">🖨️</span>
+                <span>この日の仕分け表を印刷</span>
+              </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-center">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3.5 text-left text-xs font-black text-slate-600 uppercase">
+          {/* 印刷専用ヘッダー（通常画面では非表示、A4印刷用紙の最上部にのみ出力） */}
+          <div className="hidden print:block mb-2 pb-2 border-b-2 border-slate-900">
+            <div className="flex justify-between items-end">
+              <div>
+                <div className="text-[10px] tracking-widest text-slate-600 font-bold uppercase">
+                  MAISON KAYSER PARIS — 2026 Noël
+                </div>
+                <h1 className="text-lg font-black text-slate-950 tracking-tight leading-tight mt-0.5">
+                  工場出荷指示書 ＆ 店舗別ケーキ仕分け表
+                </h1>
+              </div>
+              <div className="text-right">
+                <div className="inline-block px-3 py-0.5 bg-red-600 text-white rounded font-black text-sm tracking-wide">
+                  納品日: {DELIVERY_DATES.find(d => d.value === selectedDeliveryDate)?.label}
+                </div>
+                <div className="text-[9px] text-slate-500 font-bold mt-0.5">
+                  出力日時: {new Date().toLocaleDateString('ja-JP')} {new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 仕分け内訳テーブル */}
+          <div className="overflow-x-auto print:overflow-visible">
+            <table className="min-w-full divide-y divide-slate-200 text-center print:w-full print:border-collapse print:table-fixed">
+              <thead className="bg-slate-50 print:bg-slate-100">
+                <tr className="print:border-b print:border-slate-800">
+                  <th className="px-4 py-3.5 print:px-1.5 print:py-1 text-left text-xs print:text-[10px] font-black text-slate-600 uppercase print:text-slate-900 print:w-[22%]">
                     店舗名（アカウント）
                   </th>
-                  <th className="px-3 py-3.5 text-xs font-black text-slate-500 uppercase whitespace-nowrap">
+                  <th className="px-3 py-3.5 print:px-1 print:py-1 text-xs print:text-[10px] font-black text-slate-500 uppercase whitespace-nowrap print:text-slate-900 print:w-[8%]">
                     区分
                   </th>
                   {products.map(prod => (
-                    <th key={prod} className="px-3 py-3.5 text-xs font-black text-slate-700 whitespace-nowrap">
-                      {prod}
+                    <th
+                      key={prod}
+                      className="px-2 py-2 print:px-0.5 print:py-1 text-xs print:text-[9.5px] font-black text-slate-700 whitespace-nowrap print:whitespace-normal print:text-slate-900 align-middle"
+                    >
+                      {renderProductNameHeader(prod)}
                     </th>
                   ))}
-                  <th className="px-4 py-3.5 text-xs font-black text-red-700 bg-red-50/70 whitespace-nowrap">
+                  <th className="px-4 py-3.5 print:px-1.5 print:py-1 text-xs print:text-[10px] font-black text-red-700 bg-red-50/70 whitespace-nowrap print:bg-red-100 print:text-red-950 print:w-[10%]">
                     店舗計
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200 print:divide-slate-300">
                 {storeAccounts.length === 0 ? (
                   <tr>
                     <td colSpan={products.length + 3} className="px-6 py-8 text-center text-slate-400 font-bold">
@@ -649,15 +729,15 @@ export default function XmasFactoryPage() {
                     });
 
                     return (
-                      <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3.5 text-left font-bold text-slate-900 text-sm whitespace-nowrap">
+                      <tr key={acc.id} className="hover:bg-slate-50 transition-colors print:border-b print:border-slate-300">
+                        <td className="px-4 py-3.5 print:px-1.5 print:py-0.5 text-left font-bold text-slate-900 text-sm print:text-[11px] whitespace-nowrap truncate">
                           {acc.display_name}
                         </td>
-                        <td className="px-3 py-3.5 whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                        <td className="px-3 py-3.5 print:px-1 print:py-0.5 whitespace-nowrap">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] print:text-[9px] print:px-1 print:py-0 font-bold ${
                             acc.role === 'tokyo_store'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-emerald-100 text-emerald-800'
+                              ? 'bg-blue-100 text-blue-800 print:border print:border-blue-400'
+                              : 'bg-emerald-100 text-emerald-800 print:border print:border-emerald-400'
                           }`}>
                             {acc.role === 'tokyo_store' ? '首都圏' : '地方'}
                           </span>
@@ -665,15 +745,23 @@ export default function XmasFactoryPage() {
                         {products.map(prod => {
                           const count = storeData[prod] || 0;
                           return (
-                            <td key={prod} className="px-3 py-3.5 whitespace-nowrap">
-                              <span className={`text-base font-bold ${count > 0 ? 'text-slate-900' : 'text-slate-300'}`}>
+                            <td key={prod} className="px-3 py-3.5 print:px-1 print:py-0.5 whitespace-nowrap">
+                              <span className={`transition-all ${
+                                count > 0
+                                  ? 'text-lg sm:text-xl print:text-[13px] font-black text-slate-950 inline-block px-1.5 py-0.5 rounded bg-amber-50/80 border border-amber-200/60 print:bg-transparent print:border-none print:p-0'
+                                  : 'text-sm print:text-[10px] font-normal text-slate-300'
+                              }`}>
                                 {count}
                               </span>
                             </td>
                           );
                         })}
-                        <td className="px-4 py-3.5 bg-red-50/50 whitespace-nowrap">
-                          <span className="text-base font-black text-red-600">
+                        <td className="px-4 py-3.5 print:px-1.5 print:py-0.5 bg-red-50/50 print:bg-red-50/80 whitespace-nowrap">
+                          <span className={`transition-all ${
+                            storeTotal > 0
+                              ? 'text-lg sm:text-xl print:text-[13px] font-black text-red-600 print:text-red-700'
+                              : 'text-sm print:text-[10px] font-normal text-slate-300'
+                          }`}>
                             {storeTotal}
                           </span>
                         </td>
@@ -683,9 +771,9 @@ export default function XmasFactoryPage() {
                 )}
               </tbody>
               {/* 店舗合計行 */}
-              <tfoot className="bg-slate-100/80 font-black">
+              <tfoot className="bg-slate-100/80 print:bg-slate-200 font-black print:border-t-2 print:border-slate-800">
                 <tr>
-                  <td colSpan={2} className="px-4 py-3.5 text-left text-slate-900 text-sm">
+                  <td colSpan={2} className="px-4 py-3.5 print:px-1.5 print:py-1 text-left text-slate-900 text-sm print:text-[11px] font-black">
                     {DELIVERY_DATES.find(d => d.value === selectedDeliveryDate)?.label} 全店合計
                   </td>
                   {products.map(prod => {
@@ -694,12 +782,12 @@ export default function XmasFactoryPage() {
                       colTotal += (storeMatrixByDate[selectedDeliveryDate]?.[acc.id]?.[prod] || 0);
                     });
                     return (
-                      <td key={prod} className="px-3 py-3.5 text-slate-900 text-base">
+                      <td key={prod} className="px-3 py-3.5 print:px-1 print:py-1 text-slate-900 text-base print:text-[13px] font-black">
                         {colTotal}
                       </td>
                     );
                   })}
-                  <td className="px-4 py-3.5 bg-red-100 text-red-800 text-lg">
+                  <td className="px-4 py-3.5 print:px-1.5 print:py-1 bg-red-100 text-red-800 print:text-red-950 text-lg print:text-[13px] font-black">
                     {storeAccounts.reduce((acc, store) => {
                       const data = storeMatrixByDate[selectedDeliveryDate]?.[store.id] || {};
                       return acc + products.reduce((sum, p) => sum + (data[p] || 0), 0);
@@ -712,6 +800,33 @@ export default function XmasFactoryPage() {
         </div>
 
       </div>
+
+      {/* 印刷専用スタイル（A4 1枚収まり用CSS） */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm;
+          }
+          body {
+            background-color: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          header, nav, footer, .no-print {
+            display: none !important;
+          }
+          main {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

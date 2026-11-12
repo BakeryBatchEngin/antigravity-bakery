@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
 
 export const XMAS_PRODUCTS = [
-  'デリスドゥラス',
+  'デリスドゥフランス',
   'リンツァーロール',
   'ブッシュカイザー',
   'ブッシュ エキゾチック',
