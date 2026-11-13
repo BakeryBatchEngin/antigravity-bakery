@@ -5,8 +5,10 @@ import { useState, useMemo } from 'react';
 type Log = {
   id: number;
   action: string;
+  category?: string | null;
   table_name: string;
   record_id: string;
+  description?: string | null;
   old_data: any;
   new_data: any;
   created_at: string;
@@ -15,6 +17,7 @@ type Log = {
   store_name: string | null;
   tenant_id: number | null;
   tenant_name: string | null;
+  tenant_code?: string | null;
 };
 
 type Tenant = {
@@ -27,12 +30,18 @@ const ACTION_STYLE: Record<string, string> = {
   INSERT: 'bg-green-100 text-green-700',
   DELETE: 'bg-red-100 text-red-700',
   UPDATE: 'bg-blue-100 text-blue-700',
+  LOGIN: 'bg-indigo-100 text-indigo-700',
+  LOGOUT: 'bg-slate-100 text-slate-700',
+  IMPORT: 'bg-teal-100 text-teal-700',
 };
 
 const ACTION_LABEL: Record<string, string> = {
   INSERT: '登録',
   DELETE: '削除',
   UPDATE: '更新',
+  LOGIN: 'ログイン',
+  LOGOUT: 'ログアウト',
+  IMPORT: '一括取込',
 };
 
 // テーブル名を日本語に変換
@@ -47,7 +56,18 @@ const TABLE_LABEL: Record<string, string> = {
   products:               '商品',
   ingredients:            '材料',
   doughs:                 '生地',
+  xmas_orders:            'クリスマス予約',
+  xmas_accounts:          'クリスマスアカウント',
+  xmas_product_limits:    'クリスマス製造上限',
+  xmas_settings:          'クリスマス設定',
+  store_sales_orders:     '販売発注',
 };
+
+// 長いテナント名をすっきり表示するヘルパー
+function formatTenantName(name?: string | null): string {
+  if (!name) return 'システム';
+  return name.replace('株式会社', '').trim();
+}
 
 export default function AuditLogsTable({ logs, tenants }: { logs: Log[]; tenants: Tenant[] }) {
   const [selectedLog, setSelectedLog] = useState<Log | null>(null);
@@ -161,13 +181,14 @@ export default function AuditLogsTable({ logs, tenants }: { logs: Log[]; tenants
             <button
               key={t.id}
               onClick={() => setSelectedTenantId(t.id)}
+              title={t.tenant_name}
               className={`px-4 py-2 rounded-full text-sm font-semibold transition border ${
                 selectedTenantId === t.id
                   ? 'bg-indigo-600 text-white border-indigo-600'
                   : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400'
               }`}
             >
-              🏢 {t.tenant_name}（{count}件）
+              🏢 {formatTenantName(t.tenant_name)}（{count}件）
             </button>
           );
         })}
@@ -261,19 +282,24 @@ export default function AuditLogsTable({ logs, tenants }: { logs: Log[]; tenants
                     >
                       <td className="p-4 whitespace-nowrap text-slate-500 text-xs">{dateStr}</td>
                       {selectedTenantId === null && (
-                        <td className="p-4 text-xs text-indigo-600 font-medium">
-                          {log.tenant_name || <span className="text-slate-300">システム</span>}
+                        <td className="p-4 text-xs text-indigo-600 font-medium max-w-[10rem] truncate" title={log.tenant_name || 'システム'}>
+                          {formatTenantName(log.tenant_name)}
                         </td>
                       )}
                       <td className="p-4 font-medium text-slate-700">{log.store_name || <span className="text-slate-300">-</span>}</td>
-                      <td className="p-4 text-slate-600">{log.user_name || <span className="text-slate-400">不明</span>}</td>
+                      <td className="p-4 text-slate-700 font-medium">{log.user_name || <span className="text-slate-400">不明</span>}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded text-xs font-bold ${ACTION_STYLE[log.action] || 'bg-slate-100 text-slate-600'}`}>
                           {ACTION_LABEL[log.action] || log.action}
                         </span>
                       </td>
-                      <td className="p-4 text-slate-500 text-xs">
-                        {TABLE_LABEL[log.table_name] || log.table_name}
+                      <td className="p-4 text-slate-500 text-xs max-w-[14rem]">
+                        <div className="font-bold text-slate-800 truncate" title={log.description || TABLE_LABEL[log.table_name] || log.table_name}>
+                          {log.description || TABLE_LABEL[log.table_name] || log.table_name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {TABLE_LABEL[log.table_name] || log.table_name}
+                        </div>
                       </td>
                       <td className="p-4">
                         <button
@@ -298,7 +324,9 @@ export default function AuditLogsTable({ logs, tenants }: { logs: Log[]; tenants
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <div>
-                <h3 className="text-xl font-bold text-slate-800">ログ詳細情報</h3>
+                <h3 className="text-xl font-bold text-slate-800">
+                  {selectedLog.description || 'ログ詳細情報'}
+                </h3>
                 <p className="text-sm text-slate-500 mt-1">
                   <span className="font-mono text-indigo-600">{TABLE_LABEL[selectedLog.table_name] || selectedLog.table_name}</span>
                   　{selectedLog.tenant_name ? `｜${selectedLog.tenant_name}` : ''}
