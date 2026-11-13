@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveStoreAuth } from '@/lib/storeAuth';
+import { logActivity } from '@/lib/logger';
 
 export async function GET(request: Request) {
   try {
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
     }
 
     let insertedCount = 0;
+    let totalSavedItems = 0;
 
     // トランザクションを開始し、セッションに user_id, store_id, role を記録する（監査ログとRLS用）
     await db.transactionWithUser(user.id, storeId, user.role, async (txDb) => {
@@ -160,6 +162,7 @@ export async function POST(request: Request) {
       }
 
       const toInsertData = Array.from(mergedOrdersMap.values());
+      totalSavedItems = toInsertData.length;
       toInsertData.forEach(item => {
           if (item.is_new) insertedCount++;
       });
@@ -190,6 +193,19 @@ export async function POST(request: Request) {
          }
       }
       console.timeEnd('order_bulk_processing');
+    });
+
+    // 業務アクティビティログを記録
+    const datesStr = uniqueDates.join(', ');
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      storeId,
+      action: mode === 'replace' ? 'UPDATE' : 'INSERT',
+      category: 'order',
+      tableName: 'orders',
+      description: `発注データを${mode === 'replace' ? '上書き更新' : '登録・合算'}しました（対象日: ${datesStr} / 計${totalSavedItems}品目・明細）`,
+      newData: { dates: uniqueDates, count: totalSavedItems, mode },
     });
 
     const msg = mode === 'replace' 

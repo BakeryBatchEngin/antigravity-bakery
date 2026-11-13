@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { resolveLossStoreId } from '@/lib/lossStore';
 import { parseOrderSheet } from '@/lib/parseOrderSheet';
+import { logActivity } from '@/lib/logger';
 
 // オーダー表（新フォーマット）の取込API
 //   mode=preview : ファイルを解析して内容を返す（DBには書き込まない）
@@ -166,6 +167,21 @@ export async function POST(req: Request) {
       },
       tenantId
     );
+
+    // 業務アクティビティログを記録
+    const dateRangeStr = parsed.dates.length > 0
+      ? `${parsed.dates[0].date} 〜 ${parsed.dates[parsed.dates.length - 1].date}`
+      : '';
+    await logActivity({
+      tenantId,
+      userId: user.id,
+      storeId: effectiveStoreId,
+      action: 'IMPORT',
+      category: 'order',
+      tableName: 'store_sales_orders',
+      description: `週間オーダー表を取り込みました（${rows.length}品目・計${ordersCount}件 / 対象期間: ${dateRangeStr}）`,
+      newData: { ordersCount, productsCount: rows.length, datesCount: parsed.dates.length },
+    });
 
     return NextResponse.json({
       success: true,

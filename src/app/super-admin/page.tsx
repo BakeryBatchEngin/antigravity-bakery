@@ -29,6 +29,7 @@ export default async function SuperAdminDashboard() {
   let userCount   = 0;
   let orderCount  = 0;
   let logCount    = 0;
+  let securityAlertCount = 0;
   let tenantList: any[] = [];
   let errorMessage = null;
 
@@ -39,12 +40,14 @@ export default async function SuperAdminDashboard() {
     const u  = await db.get('SELECT COUNT(*) as count FROM users WHERE role != \'super_admin\'');
     const o  = await db.get('SELECT COUNT(*) as count FROM orders');
     const l  = await db.get('SELECT COUNT(*) as count FROM audit_logs');
+    const sec = await db.get(`SELECT COUNT(*) as count FROM security_logs WHERE severity IN ('CRITICAL', 'WARNING') AND created_at >= NOW() - INTERVAL '24 hours'`);
 
     storeCount  = s?.count  ?? 0;
     tenantCount = tc?.count ?? 0;
     userCount   = u?.count  ?? 0;
     orderCount  = o?.count  ?? 0;
     logCount    = l?.count  ?? 0;
+    securityAlertCount = Number(sec?.count ?? 0);
 
     // 会社ごとの店舗数・ユーザー数を集計
     tenantList = await db.all(`
@@ -89,7 +92,7 @@ export default async function SuperAdminDashboard() {
       )}
 
       {/* サマリーカード */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-slate-500 text-sm font-medium">契約会社数</h3>
           <p className="text-4xl font-black text-indigo-600 mt-2">{tenantCount}</p>
@@ -110,6 +113,21 @@ export default async function SuperAdminDashboard() {
           <p className="text-4xl font-black text-amber-500 mt-2">{logCount}</p>
           <p className="text-xs text-slate-400 mt-1">総オペレーション数</p>
         </div>
+        <a 
+          href="/super-admin/security-logs"
+          className={`p-6 rounded-2xl shadow-sm border transition-all hover:scale-[1.02] block ${
+            securityAlertCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-slate-500 text-sm font-medium">セキュリティ警告(24h)</h3>
+            <span className="text-xl">🛡️</span>
+          </div>
+          <p className={`text-4xl font-black mt-2 ${securityAlertCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {securityAlertCount}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">不正・連続失敗検知</p>
+        </a>
       </div>
 
       {/* 契約会社一覧 */}

@@ -26,6 +26,9 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
           <Link href="/super-admin/audit-logs" className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-slate-800 transition text-amber-400 hover:text-amber-300">
             <span>📋</span> 監査ログ
           </Link>
+          <Link href="/super-admin/security-logs" className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-slate-800 transition text-rose-400 hover:text-rose-300">
+            <span>🛡️</span> セキュリティ監査
+          </Link>
         </nav>
         <div className="p-4 border-t border-slate-700">
           <Link href="/" className="block px-4 py-2 text-center bg-slate-700 rounded hover:bg-slate-600 transition">

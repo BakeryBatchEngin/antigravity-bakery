@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveStoreAuth } from '@/lib/storeAuth';
+import { logActivity } from '@/lib/logger';
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +23,20 @@ export async function POST(request: Request) {
           plan_data=excluded.plan_data,
           updated_at=CURRENT_TIMESTAMP
       `, [storeId, date, planData]);
+    });
+
+    // 業務アクティビティログを記録
+    const batchCount = Array.isArray(flatBatches) ? flatBatches.length : 0;
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      storeId,
+      action: 'UPDATE',
+      category: 'production',
+      tableName: 'daily_production_plans',
+      recordId: date,
+      description: `仕込み計画を保存しました（対象日: ${date} / 計${batchCount}バッチ）`,
+      newData: { date, batchCount },
     });
 
     return NextResponse.json({ success: true });

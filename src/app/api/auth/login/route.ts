@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { logActivity, logSecurityEvent, getRequestMeta } from '@/lib/logger';
 
 // タイミング攻撃緩和用のダミーハッシュ（ユーザーが存在しない場合も同じ計算時間を消費させる）
 const DUMMY_HASH = '$2b$10$7EqJtq98hPqEX7fNZaFWoO.8/k.Y9j7kGf56hQ3kG.aC9m9yK5J/2';
@@ -60,6 +61,7 @@ async function handleXmasLoginFailure(db: any, account: any): Promise<{ locked: 
 export async function POST(request: Request) {
   try {
     const { username, pin, password } = await request.json();
+    const { ip, userAgent } = getRequestMeta(request);
 
     if (!username) {
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
@@ -84,6 +86,16 @@ export async function POST(request: Request) {
           const now = new Date();
           if (lockExpiry > now) {
             const remainingMinutes = Math.max(1, Math.ceil((lockExpiry.getTime() - now.getTime()) / (60 * 1000)));
+            await logSecurityEvent({
+              tenantId: xmasAccount.tenant_id,
+              usernameAttempted: username,
+              eventType: 'AUTH_LOCKED',
+              severity: 'WARNING',
+              message: `ロック中のクリスマスアカウント '${username}' へのログイン試行が遮断されました`,
+              ipAddress: ip,
+              userAgent,
+              endpoint: '/api/auth/login',
+            });
             return NextResponse.json({
               error: `ログイン失敗が続いたため、アカウントが一時的にロックされています。あと約${remainingMinutes}分後に再度お試しいただくか、管理者にお問い合わせください。`,
               locked: true,
@@ -97,12 +109,32 @@ export async function POST(request: Request) {
         if (!isMatch) {
           const failResult = await handleXmasLoginFailure(db, xmasAccount);
           if (failResult.locked) {
+            await logSecurityEvent({
+              tenantId: xmasAccount.tenant_id,
+              usernameAttempted: username,
+              eventType: 'ACCOUNT_LOCKED',
+              severity: 'WARNING',
+              message: `クリスマスアカウント '${username}' がパスワード連続失敗（${MAX_FAILED_ATTEMPTS}回）により${LOCKOUT_MINUTES}分間ロックされました`,
+              ipAddress: ip,
+              userAgent,
+              endpoint: '/api/auth/login',
+            });
             return NextResponse.json({
               error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
               locked: true,
               remainingMinutes: failResult.remainingMinutes,
             }, { status: 423 });
           }
+          await logSecurityEvent({
+            tenantId: xmasAccount.tenant_id,
+            usernameAttempted: username,
+            eventType: 'AUTH_FAILURE',
+            severity: 'INFO',
+            message: `クリスマスアカウント '${username}' のパスワード認証に失敗しました`,
+            ipAddress: ip,
+            userAgent,
+            endpoint: '/api/auth/login',
+          });
           return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
         }
 
@@ -133,6 +165,17 @@ export async function POST(request: Request) {
         const sessionString = Buffer.from(JSON.stringify(sessionData)).toString('base64');
         const { signSession } = await import('@/lib/authCrypto');
         const signature = await signSession(sessionString);
+
+        // 業務ログの記録（クリスマスアカウントのログイン）
+        await logActivity({
+          tenantId: xmasAccount.tenant_id,
+          action: 'LOGIN',
+          category: 'xmas',
+          tableName: 'xmas_accounts',
+          recordId: xmasAccount.id,
+          description: `[クリスマス] ${xmasAccount.display_name}（${xmasAccount.username}）がログインしました`,
+          ipAddress: ip,
+        });
 
         const response = NextResponse.json({
           success: true,
@@ -166,6 +209,18 @@ export async function POST(request: Request) {
 
       // どちらにも存在しない場合：ダミーのbcrypt比較を実行して応答時間を平準化（ユーザー列挙攻撃対策）
       await bcrypt.compare(password || pin || 'dummy', DUMMY_HASH);
+
+      // セキュリティログ記録（存在しないユーザーのログイン試行）
+      await logSecurityEvent({
+        usernameAttempted: username,
+        eventType: 'AUTH_FAILURE',
+        severity: 'INFO',
+        message: `存在しないユーザー名 '${username}' でログインが試行されました`,
+        ipAddress: ip,
+        userAgent,
+        endpoint: '/api/auth/login',
+      });
+
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
@@ -175,6 +230,17 @@ export async function POST(request: Request) {
       const now = new Date();
       if (lockExpiry > now) {
         const remainingMinutes = Math.max(1, Math.ceil((lockExpiry.getTime() - now.getTime()) / (60 * 1000)));
+        await logSecurityEvent({
+          tenantId: user.tenant_id,
+          userId: user.id,
+          usernameAttempted: username,
+          eventType: 'AUTH_LOCKED',
+          severity: 'WARNING',
+          message: `ロック中のアカウント '${username}'（${user.display_name}）へのログイン試行が遮断されました`,
+          ipAddress: ip,
+          userAgent,
+          endpoint: '/api/auth/login',
+        });
         return NextResponse.json({
           error: `ログイン失敗が続いたため、アカウントが一時的にロックされています。あと約${remainingMinutes}分後に再度お試しいただくか、管理者にお問い合わせください。`,
           locked: true,
@@ -193,12 +259,34 @@ export async function POST(request: Request) {
       if (!pin) {
         const failResult = await handleLoginFailure(db, user);
         if (failResult.locked) {
+          await logSecurityEvent({
+            tenantId: user.tenant_id,
+            userId: user.id,
+            usernameAttempted: username,
+            eventType: 'ACCOUNT_LOCKED',
+            severity: 'WARNING',
+            message: `シェフ '${username}'（${user.display_name}）がPIN連続失敗により${LOCKOUT_MINUTES}分間ロックされました`,
+            ipAddress: ip,
+            userAgent,
+            endpoint: '/api/auth/login',
+          });
           return NextResponse.json({
             error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
             locked: true,
             remainingMinutes: failResult.remainingMinutes,
           }, { status: 423 });
         }
+        await logSecurityEvent({
+          tenantId: user.tenant_id,
+          userId: user.id,
+          usernameAttempted: username,
+          eventType: 'AUTH_FAILURE',
+          severity: 'INFO',
+          message: `シェフ '${username}'（${user.display_name}）のPIN未入力による認証失敗`,
+          ipAddress: ip,
+          userAgent,
+          endpoint: '/api/auth/login',
+        });
         return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
 
@@ -218,12 +306,34 @@ export async function POST(request: Request) {
       if (!password) {
         const failResult = await handleLoginFailure(db, user);
         if (failResult.locked) {
+          await logSecurityEvent({
+            tenantId: user.tenant_id,
+            userId: user.id,
+            usernameAttempted: username,
+            eventType: 'ACCOUNT_LOCKED',
+            severity: 'WARNING',
+            message: `管理者 '${username}'（${user.display_name}）がパスワード連続失敗により${LOCKOUT_MINUTES}分間ロックされました`,
+            ipAddress: ip,
+            userAgent,
+            endpoint: '/api/auth/login',
+          });
           return NextResponse.json({
             error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
             locked: true,
             remainingMinutes: failResult.remainingMinutes,
           }, { status: 423 });
         }
+        await logSecurityEvent({
+          tenantId: user.tenant_id,
+          userId: user.id,
+          usernameAttempted: username,
+          eventType: 'AUTH_FAILURE',
+          severity: 'INFO',
+          message: `アカウント '${username}'（${user.display_name}）のパスワード未入力による認証失敗`,
+          ipAddress: ip,
+          userAgent,
+          endpoint: '/api/auth/login',
+        });
         return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
       }
 
@@ -243,12 +353,34 @@ export async function POST(request: Request) {
     if (!isAuthenticated) {
       const failResult = await handleLoginFailure(db, user);
       if (failResult.locked) {
+        await logSecurityEvent({
+          tenantId: user.tenant_id,
+          userId: user.id,
+          usernameAttempted: username,
+          eventType: 'ACCOUNT_LOCKED',
+          severity: 'WARNING',
+          message: `アカウント '${username}'（${user.display_name}）が認証連続失敗（${MAX_FAILED_ATTEMPTS}回）により${LOCKOUT_MINUTES}分間ロックされました`,
+          ipAddress: ip,
+          userAgent,
+          endpoint: '/api/auth/login',
+        });
         return NextResponse.json({
           error: `ログイン失敗が規定回数（${MAX_FAILED_ATTEMPTS}回）に達したため、アカウントが${LOCKOUT_MINUTES}分間ロックされました。しばらく経ってからお試しいただくか、管理者にお問い合わせください。`,
           locked: true,
           remainingMinutes: failResult.remainingMinutes,
         }, { status: 423 });
       }
+      await logSecurityEvent({
+        tenantId: user.tenant_id,
+        userId: user.id,
+        usernameAttempted: username,
+        eventType: 'AUTH_FAILURE',
+        severity: 'INFO',
+        message: `アカウント '${username}'（${user.display_name}）の認証失敗（パスワードまたはPIN不一致）`,
+        ipAddress: ip,
+        userAgent,
+        endpoint: '/api/auth/login',
+      });
       return NextResponse.json({ error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
@@ -294,6 +426,19 @@ export async function POST(request: Request) {
     // 署名の生成
     const { signSession } = await import('@/lib/authCrypto');
     const signature = await signSession(sessionString);
+
+    // 業務ログの記録（通常アカウントのログイン）
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      storeId: storeIds[0] ?? null,
+      action: 'LOGIN',
+      category: 'auth',
+      tableName: 'users',
+      recordId: user.id,
+      description: `${user.display_name}（${user.username}）がログインしました`,
+      ipAddress: ip,
+    });
 
     const response = NextResponse.json({ success: true, user: sessionData });
     const isProduction = process.env.NODE_ENV === 'production';

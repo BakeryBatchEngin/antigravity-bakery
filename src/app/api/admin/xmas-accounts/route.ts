@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/logger';
 import bcrypt from 'bcryptjs';
 
 const VALID_ROLES = ['tokyo_store', 'regional_store', 'xmas_manager', 'xmas_factory', 'xmas_headquarters'];
@@ -103,11 +104,22 @@ export async function POST(request: Request) {
     // パスワードハッシュ化
     const passwordHash = await bcrypt.hash(password, 10);
 
-    await db.run(
+    const insertRes = await db.run(
       `INSERT INTO xmas_accounts (tenant_id, username, password_hash, display_name, role, is_active)
        VALUES ($1, $2, $3, $4, $5, TRUE)`,
       [effectiveTenantId, username.trim(), passwordHash, display_name.trim(), role]
     );
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: effectiveTenantId,
+      userId: user.id,
+      action: 'INSERT',
+      category: 'xmas',
+      tableName: 'xmas_accounts',
+      description: `クリスマスアカウント「${display_name}」(${username} / 権限: ${role}) を発行しました`,
+      newData: { username, display_name, role, tenantId: effectiveTenantId },
+    });
 
     return NextResponse.json({ success: true, message: 'アカウントを作成しました' });
   } catch (err: any) {
@@ -191,6 +203,26 @@ export async function PUT(request: Request) {
     const sql = `UPDATE xmas_accounts SET ${updateFields.join(', ')} WHERE id = $${params.length}`;
     await db.run(sql, params);
 
+    // 業務アクティビティログを記録
+    const details: string[] = [];
+    if (display_name !== undefined) details.push(`表示名: ${display_name}`);
+    if (role !== undefined) details.push(`権限: ${role}`);
+    if (password) details.push(`パスワード再設定`);
+    if (is_active !== undefined) details.push(`ステータス: ${is_active ? '有効' : '無効'}`);
+    if (unlock) details.push(`ロック解除`);
+
+    await logActivity({
+      tenantId: account.tenant_id,
+      userId: user.id,
+      action: 'UPDATE',
+      category: 'xmas',
+      tableName: 'xmas_accounts',
+      recordId: id,
+      description: `クリスマスアカウント「${account.display_name}」(${account.username}) を更新しました（${details.join(', ')}）`,
+      oldData: account,
+      newData: { display_name, role, is_active, unlock },
+    });
+
     return NextResponse.json({ success: true, message: 'アカウントを更新しました' });
   } catch (err: any) {
     console.error('Failed to update xmas account:', err);
@@ -244,6 +276,18 @@ export async function DELETE(request: Request) {
     }
 
     await db.run(`DELETE FROM xmas_accounts WHERE id = $1`, [Number(id)]);
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: account.tenant_id,
+      userId: user.id,
+      action: 'DELETE',
+      category: 'xmas',
+      tableName: 'xmas_accounts',
+      recordId: id,
+      description: `クリスマスアカウント「${account.display_name}」(${account.username}) を削除しました`,
+      oldData: account,
+    });
 
     return NextResponse.json({ success: true, message: 'アカウントを削除しました' });
   } catch (err: any) {

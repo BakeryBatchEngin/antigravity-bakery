@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDb, PgCompatibleDb } from '@/lib/db';
 import type { SessionUser } from '@/lib/session';
 import { verifySession } from '@/lib/authCrypto';
+import { logSecurityEvent } from '@/lib/logger';
 
 export type StoreAuthSuccess = {
   user: SessionUser;
@@ -61,6 +62,12 @@ export async function resolveStoreAuth(
   if (sigCookie?.value) {
     const isValid = await verifySession(sessionCookie.value, sigCookie.value);
     if (!isValid) {
+      await logSecurityEvent({
+        eventType: 'INVALID_SIGNATURE',
+        severity: 'CRITICAL',
+        message: 'Cookie署名の不一致（セッション改ざん試行の疑い）を検知しブロックしました',
+        endpoint: 'resolveStoreAuth',
+      });
       return {
         user: null,
         storeId: null,
@@ -148,6 +155,15 @@ export async function resolveStoreAuth(
       const targetStore = await db.get('SELECT id, tenant_id FROM stores WHERE id = $1', [requestedStoreId]);
       if (targetStore && (isSuperAdmin || Number(targetStore.tenant_id) === Number(user.tenant_id))) {
         resolvedStoreId = Number(targetStore.id);
+      } else if (targetStore && !isSuperAdmin && Number(targetStore.tenant_id) !== Number(user.tenant_id)) {
+        await logSecurityEvent({
+          tenantId: user.tenant_id,
+          userId: user.id,
+          eventType: 'FORBIDDEN_STORE_ACCESS',
+          severity: 'WARNING',
+          message: `他テナントの店舗 (ID:${requestedStoreId}) へのアクセス試行を検知し自社店舗へ切り替えました`,
+          endpoint: 'resolveStoreAuth',
+        });
       }
     }
 

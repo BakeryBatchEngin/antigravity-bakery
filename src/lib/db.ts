@@ -608,19 +608,53 @@ export async function initDb() {
     );
   `);
 
-  // 監査ログ用テーブルの追加
+  // 監査ログ用テーブルの追加・拡張
   await database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id SERIAL PRIMARY KEY,
+      tenant_id INTEGER,
       user_id INTEGER,
       store_id INTEGER,
       action TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
       table_name TEXT NOT NULL,
       record_id TEXT,
+      description TEXT,
+      ip_address TEXT,
       old_data JSONB,
       new_data JSONB,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS tenant_id INTEGER;
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general';
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS ip_address TEXT;
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_category ON audit_logs(category);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+  `);
+
+  // セキュリティ監査ログ用テーブル
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS security_logs (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER,
+      user_id INTEGER,
+      username_attempted TEXT,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      message TEXT NOT NULL,
+      action_advice TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      endpoint TEXT,
+      metadata JSONB,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_security_logs_created ON security_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_severity ON security_logs(severity);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_event_type ON security_logs(event_type);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_tenant ON security_logs(tenant_id);
   `);
 
   // users テーブルのセキュリティ強化カラム（失敗回数・ロック日時）の安全追加

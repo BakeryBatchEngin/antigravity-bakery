@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/logger';
 
 // セッションからユーザー情報を取得
 async function getUser() {
@@ -171,6 +172,19 @@ export async function POST(request: Request) {
       }
 
       });
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      action: 'UPDATE',
+      category: 'master',
+      tableName: 'products',
+      recordId: product_code,
+      description: `商品マスタ「${product_name}」(${product_code}) を登録・更新しました`,
+      newData: { product_code, product_name, retail_price, wholesale_price },
+    });
+
     return NextResponse.json({ success: true });
     
   } catch (error) {
@@ -217,6 +231,18 @@ export async function DELETE(request: Request) {
           await txDb.run('DELETE FROM product_ingredients WHERE product_code = ?', [code]);
         }
       });
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      action: 'DELETE',
+      category: 'master',
+      tableName: 'products',
+      recordId: code,
+      description: `商品マスタ (${code}) を削除しました`,
+    });
+
     return NextResponse.json({ success: true });
     
   } catch (error) {

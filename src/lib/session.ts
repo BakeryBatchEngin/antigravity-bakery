@@ -16,6 +16,7 @@ export type SessionUser = {
   tenant_id: number | null;
   displayName?: string;
   storeIds?: number[];
+  is_xmas?: boolean;
   exp?: number; // セッション有効期限（UNIXタイムスタンプ秒）
 };
 

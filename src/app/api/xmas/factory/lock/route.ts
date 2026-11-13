@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/logger';
 
 /**
  * クリスマス受発注の店舗ロック状態取得API
@@ -75,6 +76,17 @@ export async function POST(request: Request) {
         [effectiveTenantId, lockVal]
       );
     }
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: effectiveTenantId,
+      userId: user.is_xmas ? null : user.id,
+      action: 'UPDATE',
+      category: 'xmas',
+      tableName: 'xmas_settings',
+      description: `[クリスマス設定] 店舗からの発注受付を「${is_locked ? '締切（ロック）' : '受付中（ロック解除）'}」に変更しました`,
+      newData: { is_locked },
+    });
 
     return NextResponse.json({
       success: true,

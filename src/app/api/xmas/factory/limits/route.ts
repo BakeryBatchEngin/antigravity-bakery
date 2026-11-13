@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/logger';
 
 /**
  * 最大受注数の設定更新API
@@ -53,6 +54,18 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    // 業務アクティビティログを記録
+    const limitsSummary = limits.map((l: any) => `${l.product_name}:${l.max_limit}台`).join(', ');
+    await logActivity({
+      tenantId: effectiveTenantId,
+      userId: user.is_xmas ? null : user.id,
+      action: 'UPDATE',
+      category: 'xmas',
+      tableName: 'xmas_product_limits',
+      description: `[クリスマス工場] 商品別製造上限数を更新しました (${limitsSummary})`,
+      newData: { limits },
+    });
 
     return NextResponse.json({ success: true, message: '最大受注数を保存しました' });
   } catch (err: any) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/logger';
 
 export const XMAS_PRODUCTS = [
   'デリスドゥフランス',
@@ -325,6 +326,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // 業務アクティビティログを記録
+    const itemsSummary = items
+      .filter((i: any) => i.product_name && i.quantity > 0)
+      .map((i: any) => `${i.product_name}×${i.quantity}`)
+      .join(', ');
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.is_xmas ? null : user.id,
+      action: 'INSERT',
+      category: 'xmas',
+      tableName: 'xmas_orders',
+      recordId: orderId,
+      description: `[クリスマス予約登録] ${customer_name}様分 (${itemsSummary} / 受取: ${delivery_date} ${delivery_time}) を登録しました`,
+      newData: { customer_name, delivery_date, delivery_time, items, order_route, staff_name },
+    });
+
     return NextResponse.json({ success: true, orderId, message: '受注を登録しました' });
   } catch (err: any) {
     console.error('Failed to create xmas order:', err);
@@ -481,6 +498,19 @@ export async function PUT(request: Request) {
       }
     }
 
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.is_xmas ? null : user.id,
+      action: 'UPDATE',
+      category: 'xmas',
+      tableName: 'xmas_orders',
+      recordId: id,
+      description: `[クリスマス予約更新] ${customer_name || existingOrder.customer_name}様分 (ID:${id}) の内容を更新しました`,
+      oldData: existingOrder,
+      newData: { customer_name, delivery_date, delivery_time, items, payment_status },
+    });
+
     return NextResponse.json({ success: true, message: '受注内容を更新しました' });
   } catch (err: any) {
     console.error('Failed to update xmas order:', err);
@@ -534,6 +564,18 @@ export async function DELETE(request: Request) {
     // 明細レコードを明示的に削除してから受注本体を削除
     await db.run(`DELETE FROM xmas_order_items WHERE order_id = $1`, [Number(id)]);
     await db.run(`DELETE FROM xmas_orders WHERE id = $1`, [Number(id)]);
+
+    // 業務アクティビティログを記録
+    await logActivity({
+      tenantId: user.tenant_id,
+      userId: user.is_xmas ? null : user.id,
+      action: 'DELETE',
+      category: 'xmas',
+      tableName: 'xmas_orders',
+      recordId: id,
+      description: `[クリスマス予約削除] ${order.customer_name}様分 (受取日:${order.delivery_date}) を削除しました`,
+      oldData: order,
+    });
 
     return NextResponse.json({ success: true, message: '受注を削除しました' });
   } catch (err: any) {
