@@ -776,13 +776,13 @@ export default function XmasOrdersPage() {
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     割引適用 *
                   </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {['なし', '１０％', '１５％', '３０％'].map((disc) => (
+                  <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                    {['なし', '５％', '１０％', '１５％', '３０％'].map((disc) => (
                       <button
                         key={disc}
                         type="button"
                         onClick={() => setFormData({ ...formData, discount_type: disc })}
-                        className={`py-3 px-1.5 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
+                        className={`py-2.5 px-0.5 sm:px-1 rounded-xl text-[11px] sm:text-xs md:text-sm font-bold border transition-all text-center whitespace-nowrap ${
                           formData.discount_type === disc
                             ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                             : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
