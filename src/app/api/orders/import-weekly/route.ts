@@ -5,6 +5,14 @@ import { resolveLossStoreId } from '@/lib/lossStore';
 import { parseOrderSheet } from '@/lib/parseOrderSheet';
 import { logActivity } from '@/lib/logger';
 
+// 商品名比較用の正規化（全角半角統一、空白除去、小文字化）
+function normalizeProductName(name: string): string {
+  return String(name || '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
 // オーダー表（新フォーマット）の取込API
 //   mode=preview : ファイルを解析して内容を返す（DBには書き込まない）
 //   mode=commit  : 同じファイルを再解析して登録（Excelに載っている日付分を入れ替え）
@@ -60,45 +68,98 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const masterMap = new Map<string, string>();
+
+    // 1. コード引き用Map、2. 商品名引き用Map（正規化）の2種類を作成
+    const masterCodeMap = new Map<string, string>();
+    const masterNameMap = new Map<string, { productCode: string; productName: string }>();
+
     for (const mp of masterProducts) {
-      masterMap.set(String(mp.product_code).trim(), String(mp.product_name));
+      const code = String(mp.product_code || '').trim();
+      const name = String(mp.product_name || '').trim();
+      if (code) {
+        masterCodeMap.set(code, name);
+      }
+      const norm = normalizeProductName(name);
+      if (norm && !masterNameMap.has(norm)) {
+        masterNameMap.set(norm, { productCode: code, productName: name });
+      }
     }
 
-    // Excelの解析
+    // Excelの解析（行位置・ヘッダー位置を動的スキャン）
     const data = new Uint8Array(await file.arrayBuffer());
     const parsed = await parseOrderSheet(data);
 
-    // 商品マスタに存在する商品コードだけに絞り込み（同じコードが複数行あれば合算）
+    // 商品マスタとの突合（コード完全一致優先 ＋ 商品名正規化一致フォールバック）
     const aggregated = new Map<string, { productCode: string; productName: string; quantities: number[] }>();
-    const skippedCodes = new Set<string>();
+    const unmatchedItems = new Set<string>();
+    let nameMatchedCount = 0;
+
     for (const row of parsed.rows) {
-      const masterName = masterMap.get(row.productCode);
-      if (!masterName) {
-        skippedCodes.add(row.productCode);
+      let resolvedCode = '';
+      let resolvedName = '';
+
+      // ① まず商品コードで照合
+      if (row.productCode && masterCodeMap.has(row.productCode)) {
+        resolvedCode = row.productCode;
+        resolvedName = masterCodeMap.get(row.productCode)!;
+      }
+      // ② コードで一致しない、またはコードが空の場合は商品名で照合
+      else if (row.productName) {
+        const norm = normalizeProductName(row.productName);
+        const matched = masterNameMap.get(norm);
+        if (matched) {
+          resolvedCode = matched.productCode;
+          resolvedName = matched.productName;
+          nameMatchedCount++;
+        }
+      }
+
+      // どちらでもマスタに見つからない場合（発注数量が1以上ある行）
+      if (!resolvedCode) {
+        const itemLabel = row.productName
+          ? row.productName
+          : (row.productCode ? `コード: ${row.productCode}` : '名称不明の商品');
+        unmatchedItems.add(itemLabel);
         continue;
       }
-      const existing = aggregated.get(row.productCode);
+
+      // 同一コードがあれば合算
+      const existing = aggregated.get(resolvedCode);
       if (existing) {
         existing.quantities = existing.quantities.map((q, i) => q + row.quantities[i]);
       } else {
-        aggregated.set(row.productCode, {
-          productCode: row.productCode,
-          productName: masterName,
+        aggregated.set(resolvedCode, {
+          productCode: resolvedCode,
+          productName: resolvedName,
           quantities: [...row.quantities],
         });
       }
     }
+
+    // 発注数量があるにもかかわらず商品マスタに該当しない商品が存在する場合はエラーで中断
+    if (unmatchedItems.size > 0) {
+      const items = Array.from(unmatchedItems);
+      const errorMsg =
+        items.length === 1
+          ? `「${items[0]}」という商品が商品マスタに該当しません。`
+          : `${items.slice(0, 3).map(name => `「${name}」`).join('、')}${items.length > 3 ? ` など計${items.length}品目` : ''}という商品が商品マスタに該当しません。`;
+
+      return NextResponse.json(
+        {
+          error: errorMsg,
+          details: '商品マスタの登録内容や、Excel内の商品名・商品コードをご確認ください。未登録の場合は企業ロス統括管理者の「販売商品マスタ設定」から商品を登録してください。',
+        },
+        { status: 400 }
+      );
+    }
+
     const rows = Array.from(aggregated.values());
 
     if (rows.length === 0) {
       return NextResponse.json(
         {
-          error: '販売商品マスタに一致する発注商品が1件も見つかりませんでした。',
-          details:
-            skippedCodes.size > 0
-              ? `オーダー表には ${skippedCodes.size} 品目の発注がありましたが、すべて販売商品マスタに未登録でした（例: ${Array.from(skippedCodes).slice(0, 5).join('、')}）。`
-              : '発注数（1個以上）が入力された行が見つかりませんでした。',
+          error: '発注データが1件も見つかりませんでした。',
+          details: 'オーダー表内の発注数（1個以上）が入力された行をご確認ください。',
         },
         { status: 400 }
       );
@@ -119,8 +180,9 @@ export async function POST(req: Request) {
         dates: parsed.dates,
         rows,
         existingDates,
-        skippedProductsCount: skippedCodes.size,
-        skippedSample: Array.from(skippedCodes).slice(0, 5),
+        skippedProductsCount: 0,
+        skippedSample: [],
+        nameMatchedCount,
         warnings: parsed.warnings,
       });
     }
@@ -179,8 +241,8 @@ export async function POST(req: Request) {
       action: 'IMPORT',
       category: 'order',
       tableName: 'store_sales_orders',
-      description: `週間オーダー表を取り込みました（${rows.length}品目・計${ordersCount}件 / 対象期間: ${dateRangeStr}）`,
-      newData: { ordersCount, productsCount: rows.length, datesCount: parsed.dates.length },
+      description: `週間オーダー表を取り込みました（${rows.length}品目・計${ordersCount}件${nameMatchedCount > 0 ? ` ※商品名一致による補完${nameMatchedCount}件含む` : ''} / 対象期間: ${dateRangeStr}）`,
+      newData: { ordersCount, productsCount: rows.length, datesCount: parsed.dates.length, nameMatchedCount },
     });
 
     return NextResponse.json({
@@ -189,8 +251,9 @@ export async function POST(req: Request) {
       ordersCount,
       productsCount: rows.length,
       datesCount: parsed.dates.length,
-      skippedProductsCount: skippedCodes.size,
-      skippedSample: Array.from(skippedCodes).slice(0, 5),
+      nameMatchedCount,
+      skippedProductsCount: 0,
+      skippedSample: [],
     });
   } catch (error: any) {
     console.error('Import weekly orders error:', error);

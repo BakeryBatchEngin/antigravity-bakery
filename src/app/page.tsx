@@ -36,6 +36,7 @@ export default function Home() {
     rows: { productCode: string; productName: string; quantities: number[] }[];
     existingDates: string[];
     skippedProductsCount: number;
+    nameMatchedCount?: number;
     warnings: string[];
   } | null>(null);
 
@@ -113,7 +114,7 @@ export default function Home() {
       }
 
       alert(
-        `オーダー表を登録しました！（${resData.datesCount}日分 / 販売商品マスタ一致: ${resData.productsCount}品目 / 計${resData.ordersCount}件の発注）`
+        `オーダー表を登録しました！（${resData.datesCount}日分 / 販売商品マスタ一致: ${resData.productsCount}品目${resData.nameMatchedCount > 0 ? ` ※商品名一致: ${resData.nameMatchedCount}品目` : ''} / 計${resData.ordersCount}件の発注）`
       );
       closePreview();
     } catch (err: any) {
@@ -422,6 +423,11 @@ export default function Home() {
               {preview.skippedProductsCount > 0 && (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   ※販売商品マスタに未登録のためスキップした商品: {preview.skippedProductsCount}品目
+                </p>
+              )}
+              {preview.nameMatchedCount !== undefined && preview.nameMatchedCount > 0 && (
+                <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-1.5">
+                  ✓ 商品コード未入力等のうち、{preview.nameMatchedCount}品目を「商品名」で自動照合して取り込みました。
                 </p>
               )}
               {preview.warnings.map((w, i) => (
