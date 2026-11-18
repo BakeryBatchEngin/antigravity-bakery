@@ -32,6 +32,15 @@ const ROLE_ACCESS = {
     '/api/store-profile',
     '/api/loss-analytics',
   ],
+  area_loss_manager: [
+    '/store-manager',
+    '/api/vision',
+    '/api/waste',
+    '/api/orders/import-weekly',
+    '/api/sales-products',
+    '/api/store-profile',
+    '/api/loss-analytics',
+  ],
   tokyo_store: [
     '/xmas',
     '/api/xmas',

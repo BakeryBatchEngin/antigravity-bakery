@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   super_admin:   { label: 'システム管理者', color: 'bg-purple-100 text-purple-700' },
@@ -8,7 +8,8 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   master:        { label: 'マスター',       color: 'bg-blue-100 text-blue-700' },
   manager:       { label: 'マネージャー',   color: 'bg-cyan-100 text-cyan-700' },
   company_loss_manager: { label: '企業ロス統括管理者', color: 'bg-rose-100 text-rose-700' },
-  store_loss_manager: { label: '店舗ロス管理者',   color: 'bg-orange-100 text-orange-700' },
+  area_loss_manager:    { label: 'エリアロス統括マネージャー', color: 'bg-sky-100 text-sky-700' },
+  store_loss_manager:   { label: '店舗ロス管理者',   color: 'bg-orange-100 text-orange-700' },
   chef:          { label: 'シェフ',         color: 'bg-emerald-100 text-emerald-700' },
 };
 
@@ -49,6 +50,125 @@ export default function UsersClient({
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [search, setSearch] = useState('');
   const [unlockLoadingId, setUnlockLoadingId] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 雛形（テンプレートExcel）ダウンロード
+  const downloadTemplate = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('ユーザー一括登録');
+
+      ws.columns = [
+        { header: '会社コード（必須）', key: 'tenant_code', width: 22 },
+        { header: 'ユーザー名（必須）', key: 'username', width: 20 },
+        { header: '表示名（必須）', key: 'display_name', width: 22 },
+        { header: '権限（必須）', key: 'role', width: 20 },
+        { header: '初期パスワード', key: 'password', width: 18 },
+        { header: 'PINコード', key: 'pin_code', width: 14 },
+        { header: '担当店舗コード（カンマ区切り可）', key: 'store_codes', width: 30 },
+      ];
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4F46E5' },
+      };
+
+      // サンプル行
+      const sampleTenant = tenants[0]?.tenant_code || 'DELICE';
+      ws.addRow({
+        tenant_code: sampleTenant,
+        username: 'tanaka_chef',
+        display_name: '田中 一郎',
+        role: 'シェフ',
+        password: 'InitPassword123!',
+        pin_code: '1234',
+        store_codes: 'S001',
+      });
+      ws.addRow({
+        tenant_code: sampleTenant,
+        username: 'sato_manager',
+        display_name: '佐藤 次郎',
+        role: '店長',
+        password: 'InitPassword123!',
+        pin_code: '5678',
+        store_codes: 'S001,S002',
+      });
+      ws.addRow({
+        tenant_code: sampleTenant,
+        username: 'yamada_area',
+        display_name: '山田 三郎',
+        role: 'エリアロス統括マネージャー',
+        password: 'InitPassword123!',
+        pin_code: '',
+        store_codes: 'S001,S002',
+      });
+      ws.addRow({
+        tenant_code: sampleTenant,
+        username: 'suzuki_loss',
+        display_name: '鈴木 花子',
+        role: '店舗ロス管理者',
+        password: 'InitPassword123!',
+        pin_code: '',
+        store_codes: 'S001',
+      });
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ユーザー一括登録_雛形_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`雛形作成に失敗しました: ${err.message}`);
+    }
+  };
+
+  // Excelファイル選択・一括インポート
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm(`選択したExcelファイル「${file.name}」からユーザーデータを一括登録しますか？`)) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/super-admin/users/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        alert(`${json.error || '登録に失敗しました'}\n\n詳細:\n${json.details || '不明なエラー'}`);
+        return;
+      }
+
+      alert(
+        `一括登録が完了しました！\n\n登録成功: ${json.count} 名${
+          json.skippedCount > 0 ? `\nスキップ（既存）: ${json.skippedCount} 名` : ''
+        }`
+      );
+      await refreshList();
+    } catch (err: any) {
+      alert(`通信エラーが発生しました: ${err.message}`);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // 選択中テナントに絞った店舗リスト（未選択の場合は他社店舗が表示されないよう空にする）
   const filteredStores = modal.data.tenant_id
@@ -157,12 +277,44 @@ export default function UsersClient({
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition shadow"
-          >
-            ＋ 新規ユーザー追加
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+
+            <button
+              onClick={downloadTemplate}
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg text-sm font-semibold transition"
+              title="一括登録用のExcel雛形をダウンロードします"
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              雛形DL
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              type="button"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-bold transition shadow disabled:opacity-50"
+              title="Excelファイルを選択してユーザーを一括登録します"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              {importing ? '登録中...' : 'Excel一括登録'}
+            </button>
+
+            <button
+              onClick={openAdd}
+              type="button"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition shadow"
+            >
+              ＋ 新規ユーザー追加
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

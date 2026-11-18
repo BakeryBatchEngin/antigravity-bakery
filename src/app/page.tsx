@@ -225,8 +225,8 @@ export default function Home() {
         </>
       )}
 
-      {/* ===== 店舗ロス管理者・企業ロス統括管理者向けメニュー ===== */}
-      {(role === 'store_loss_manager' || role === 'company_loss_manager') && (
+      {/* ===== 店舗ロス管理者・企業ロス統括管理者・エリアロス統括マネージャー向けメニュー ===== */}
+      {(role === 'store_loss_manager' || role === 'company_loss_manager' || role === 'area_loss_manager') && (
         <>
           <div className="text-center mb-4">
             <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">
@@ -289,14 +289,16 @@ export default function Home() {
               <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">曜日別営業時間と立地条件・特徴の登録</p>
             </Link>
 
-            {role === 'company_loss_manager' && (
+            {(role === 'company_loss_manager' || role === 'area_loss_manager') && (
               <Link
                 href="/store-manager/products"
                 className="flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border-2 border-transparent hover:border-rose-500 transition-all group"
               >
                 <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-sm">🏷️</span>
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">販売商品マスタ設定</h3>
-                <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">商品コード・価格・カテゴリー・特性の管理</p>
+                <p className="text-slate-500 dark:text-slate-400 mt-2 text-center text-lg">
+                  {role === 'area_loss_manager' ? '商品コード・価格・カテゴリー・特性の閲覧' : '商品コード・価格・カテゴリー・特性の管理'}
+                </p>
               </Link>
             )}
           </div>

@@ -12,7 +12,7 @@ import { cookies } from 'next/headers';
 import type { SessionUser } from '@/lib/session';
 
 // ヘッダーで店舗を切り替えられるロール
-export const STORE_SWITCHABLE_ROLES = ['company_loss_manager', 'admin', 'super_admin'];
+export const STORE_SWITCHABLE_ROLES = ['company_loss_manager', 'area_loss_manager', 'admin', 'super_admin'];
 
 type Db = { get: Function; all: Function };
 
@@ -21,7 +21,7 @@ export type LossStoreResult =
   | { storeId: null; error: string; status: 403 };
 
 export async function resolveLossStoreId(db: Db, user: SessionUser): Promise<LossStoreResult> {
-  // 店舗を切り替えられないロール: 自分に紐づく店舗のみ
+  // 店舗を切り替えられないロール（単独店舗ロス管理者など）: 自分に紐づく店舗のみ
   if (!STORE_SWITCHABLE_ROLES.includes(user.role)) {
     const own = await db.get(
       'SELECT store_id FROM user_stores WHERE user_id = $1 ORDER BY store_id ASC LIMIT 1',
@@ -31,6 +31,30 @@ export async function resolveLossStoreId(db: Db, user: SessionUser): Promise<Los
       return { storeId: null, error: '店舗情報が見つかりません。', status: 403 };
     }
     return { storeId: Number(own.store_id), error: null, status: 200 };
+  }
+
+  // エリアロス統括マネージャーの場合: 自身の担当店舗（user_stores）のみに厳格制限
+  if (user.role === 'area_loss_manager') {
+    const ownStores = await db.all(
+      'SELECT store_id FROM user_stores WHERE user_id = $1 ORDER BY store_id ASC',
+      [user.id]
+    );
+    const ownStoreIds = new Set(ownStores.map((s: any) => Number(s.store_id)));
+    if (ownStoreIds.size === 0) {
+      return { storeId: null, error: '担当店舗が設定されていません。管理者に店舗の割り当てを依頼してください。', status: 403 };
+    }
+
+    const cookieStore = await cookies();
+    const cookieValue = cookieStore.get('active_store_id')?.value;
+    const requestedId = Number(cookieValue);
+
+    if (cookieValue && Number.isInteger(requestedId) && requestedId > 0 && ownStoreIds.has(requestedId)) {
+      return { storeId: requestedId, error: null, status: 200 };
+    }
+
+    // 担当店舗の先頭店舗をデフォルトにする
+    const firstStoreId = Number(ownStores[0].store_id);
+    return { storeId: firstStoreId, error: null, status: 200 };
   }
 
   const isSuperAdmin = user.role === 'super_admin';

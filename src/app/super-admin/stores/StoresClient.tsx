@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 type Store = {
   id: number;
@@ -38,10 +38,91 @@ export default function StoresClient({
     data: emptyStore(),
   });
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<Store | null>(null);
   const [search, setSearch] = useState('');
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('all');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 雛形（テンプレートExcel）ダウンロード
+  const downloadTemplate = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('店舗一括登録');
+
+      ws.columns = [
+        { header: '会社コード（または会社名）*', key: 'tenant_code', width: 26 },
+        { header: '店舗コード*', key: 'store_code', width: 18 },
+        { header: '店舗名*', key: 'store_name', width: 25 },
+      ];
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4F46E5' },
+      };
+
+      // サンプル行
+      const sampleCode = tenants[0]?.tenant_code || 'DELICE';
+      ws.addRow({ tenant_code: sampleCode, store_code: 'S001', store_name: '渋谷本店' });
+      ws.addRow({ tenant_code: sampleCode, store_code: 'S002', store_name: '新宿店' });
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `店舗一括登録_雛形_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`雛形作成に失敗しました: ${err.message}`);
+    }
+  };
+
+  // Excelファイル選択・一括インポート
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm(`選択したExcelファイル「${file.name}」から店舗データを一括登録しますか？`)) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/super-admin/stores/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        alert(`${json.error || '登録に失敗しました'}\n\n詳細:\n${json.details || '不明なエラー'}`);
+        return;
+      }
+
+      alert(
+        `一括登録が完了しました！\n\n登録成功: ${json.count} 件${
+          json.skippedCount > 0 ? `\nスキップ（既存）: ${json.skippedCount} 件` : ''
+        }`
+      );
+      await refreshList();
+    } catch (err: any) {
+      alert(`通信エラーが発生しました: ${err.message}`);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const openAdd = () => {
     setModal({
@@ -170,13 +251,45 @@ export default function StoresClient({
             </select>
           </div>
 
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-            新規店舗追加
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+
+            <button
+              onClick={downloadTemplate}
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg text-sm font-semibold transition"
+              title="一括登録用のExcel雛形をダウンロードします"
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              雛形DL
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              type="button"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-bold transition shadow disabled:opacity-50"
+              title="Excelファイルを選択して店舗を一括登録します"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              {importing ? '登録中...' : 'Excel一括登録'}
+            </button>
+
+            <button
+              onClick={openAdd}
+              type="button"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+              新規店舗追加
+            </button>
+          </div>
         </div>
 
         {/* 店舗一覧テーブル */}

@@ -169,7 +169,7 @@ interface PeriodAnalyticsData {
 export default function LossAnalyticsPage() {
   const { user, stores, activeStoreId } = useAuth();
   const canSwitchStore =
-    user?.role === 'company_loss_manager' || user?.role === 'admin' || user?.role === 'super_admin';
+    user?.role === 'company_loss_manager' || user?.role === 'area_loss_manager' || user?.role === 'admin' || user?.role === 'super_admin';
 
   // 表示モード (day | week | month | year)
   const [mode, setMode] = useState<'day' | 'week' | 'month' | 'year'>('week');
@@ -573,7 +573,9 @@ export default function LossAnalyticsPage() {
                   onChange={e => setSelectedStoreId(e.target.value)}
                   className="bg-transparent text-xs font-black text-emerald-900 outline-none cursor-pointer"
                 >
-                  <option value="all">🏢 全店舗合算</option>
+                  <option value="all">
+                    {user?.role === 'area_loss_manager' ? '🏢 エリア全店合算' : '🏢 全店舗合算'}
+                  </option>
                   {stores.map(s => (
                     <option key={s.id} value={String(s.id)}>
                       {s.store_name}

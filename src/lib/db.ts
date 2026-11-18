@@ -502,7 +502,7 @@ export async function initDb() {
       id              SERIAL PRIMARY KEY,
       tenant_id       INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
       username        TEXT UNIQUE NOT NULL,
-      role            TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef', 'store_loss_manager', 'company_loss_manager')),
+      role            TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'master', 'manager', 'chef', 'store_loss_manager', 'company_loss_manager', 'area_loss_manager')),
       pin_code        TEXT,
       password        TEXT,
       display_name    TEXT NOT NULL,

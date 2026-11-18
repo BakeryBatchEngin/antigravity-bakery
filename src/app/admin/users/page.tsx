@@ -222,6 +222,7 @@ export default function UsersAdminPage() {
                             user.role === 'manager' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
                             user.role === 'store_loss_manager' ? 'bg-orange-900/30 text-orange-400 border-orange-800' :
                             user.role === 'company_loss_manager' ? 'bg-rose-900/30 text-rose-400 border-rose-800' :
+                            user.role === 'area_loss_manager' ? 'bg-sky-900/30 text-sky-400 border-sky-800' :
                             'bg-emerald-900/30 text-emerald-400 border-emerald-800'
                           }`}>
                             {user.role.toUpperCase()}
@@ -370,6 +371,7 @@ export default function UsersAdminPage() {
                 >
                   <option value="chef">Chef (店舗スタッフ / 仕込み担当)</option>
                   <option value="store_loss_manager">Store Loss Manager (店舗ロス管理者 / 店舗担当)</option>
+                  <option value="area_loss_manager">Area Loss Manager (エリアロス統括マネージャー / 担当店舗のみ)</option>
                   <option value="manager">Manager (エリアマネージャー / 複数店舗管理)</option>
                   <option value="company_loss_manager">Company Loss Manager (企業ロス統括管理者 / 全店アクセス)</option>
                   <option value="master">Master (商品・マスタデータ管理者)</option>
@@ -405,7 +407,7 @@ export default function UsersAdminPage() {
                 </div>
               </div>
 
-              {(formData.role === 'chef' || formData.role === 'manager' || formData.role === 'store_loss_manager') && (
+              {(formData.role === 'chef' || formData.role === 'manager' || formData.role === 'store_loss_manager' || formData.role === 'area_loss_manager') && (
                 <div>
                   <label className="block text-sm font-bold text-slate-300 mb-3">
                     担当店舗 <span className="text-xs text-slate-400 font-normal ml-2">※複数選択可</span>

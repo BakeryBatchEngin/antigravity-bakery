@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus,
   Upload,
@@ -38,6 +39,9 @@ const PRESET_CATEGORIES = [
 ];
 
 export default function SalesProductsMasterPage() {
+  const { user } = useAuth();
+  const isAreaManager = user?.role === 'area_loss_manager';
+
   const [products, setProducts] = useState<SalesProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -252,15 +256,22 @@ export default function SalesProductsMasterPage() {
               >
                 <ArrowLeft className="w-5 h-5" />
               </Link>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex flex-wrap items-center gap-2">
                 <span>🏷️ 販売商品マスタ設定</span>
                 <span className="text-xs font-bold px-2.5 py-0.5 bg-rose-100 text-rose-700 rounded-full">
                   ロス管理専用・企業共通
                 </span>
+                {isAreaManager && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 bg-sky-100 text-sky-800 rounded-full border border-sky-300">
+                    閲覧専用モード（エリアロス統括マネージャー）
+                  </span>
+                )}
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1.5 ml-8">
-              ここに登録された商品（商品名）のみが、各店舗の「オーダー表 一括読込」で取り込まれます。仕込みエンジンの商品マスタとは完全に独立しています。
+              {isAreaManager
+                ? 'エリアロス統括マネージャー権限のため、販売商品マスタは閲覧・Excel出力のみ可能です。（新規登録・編集・削除は企業ロス統括管理者または管理者のみ実行できます）'
+                : 'ここに登録された商品（商品名）のみが、各店舗の「オーダー表 一括読込」で取り込まれます。仕込みエンジンの商品マスタとは完全に独立しています。'}
             </p>
           </div>
 
@@ -274,31 +285,35 @@ export default function SalesProductsMasterPage() {
               <span>Excel出力（テンプレート）</span>
             </a>
 
-            <input
-              type="file"
-              accept=".xlsx, .xls"
-              ref={fileInputRef}
-              className="hidden"
-              onChange={handleExcelImport}
-            />
-            <button
-              type="button"
-              disabled={isImporting}
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-xs transition-colors"
-            >
-              {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              <span>{isImporting ? '読込中...' : 'Excel一括登録・更新'}</span>
-            </button>
+            {!isAreaManager && (
+              <>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleExcelImport}
+                />
+                <button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  <span>{isImporting ? '読込中...' : 'Excel一括登録・更新'}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-xs transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>新規商品を追加</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新規商品を追加</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -368,7 +383,9 @@ export default function SalesProductsMasterPage() {
             </p>
             {products.length === 0 && (
               <p className="text-slate-500 text-xs sm:text-sm max-w-xl mx-auto">
-                右上の「Excel出力（テンプレート）」から雛形をダウンロードして「Excel一括登録・更新」で読み込むか、「新規商品を追加」ボタンから登録してください。
+                {isAreaManager
+                  ? '現在登録されている販売商品マスタはありません。（エリアロス統括マネージャーは閲覧専用です）'
+                  : '右上の「Excel出力（テンプレート）」から雛形をダウンロードして「Excel一括登録・更新」で読み込むか、「新規商品を追加」ボタンから登録してください。'}
               </p>
             )}
           </div>
@@ -382,7 +399,7 @@ export default function SalesProductsMasterPage() {
                   <th className="py-3 px-4 whitespace-nowrap text-right">価格</th>
                   <th className="py-3 px-4 whitespace-nowrap">カテゴリー</th>
                   <th className="py-3 px-4">商品の特性（AI分析・認識用テキスト）</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">操作</th>
+                  {!isAreaManager && <th className="py-3 px-4 text-right whitespace-nowrap">操作</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
@@ -413,26 +430,28 @@ export default function SalesProductsMasterPage() {
                         <span className="text-slate-400 text-xs">―</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(product)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="編集"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProduct(product)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="削除"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {!isAreaManager && (
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(product)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="編集"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(product)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="削除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -442,7 +461,7 @@ export default function SalesProductsMasterPage() {
       </div>
 
       {/* 新規作成・編集モーダル */}
-      {isModalOpen && (
+      {isModalOpen && !isAreaManager && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">

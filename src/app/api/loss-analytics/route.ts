@@ -785,10 +785,26 @@ export async function GET(req: Request) {
       tenantId = userStore?.tenant_id || 1;
     }
 
-    const tenantStores = await db.all(
+    let tenantStores = await db.all(
       'SELECT id, store_name, store_code FROM stores WHERE tenant_id = ? ORDER BY id ASC',
       [tenantId]
     );
+
+    // エリアロス統括管理者の場合: 担当店舗のみに厳格制限（全店合算も担当店舗のみの合算になる）
+    if (user.role === 'area_loss_manager') {
+      const ownStores = await db.all(
+        'SELECT store_id FROM user_stores WHERE user_id = ? ORDER BY store_id ASC',
+        [user.id]
+      );
+      const ownStoreIds = new Set((ownStores || []).map((s: any) => Number(s.store_id)));
+      if (ownStoreIds.size === 0) {
+        return NextResponse.json(
+          { error: '担当店舗が設定されていません。管理者に店舗の割り当てを依頼してください。' },
+          { status: 403 }
+        );
+      }
+      tenantStores = tenantStores.filter((s: any) => ownStoreIds.has(Number(s.id)));
+    }
 
     // 全店舗合算モード判定
     const isAllStoresReq = reqStoreId === 'all';

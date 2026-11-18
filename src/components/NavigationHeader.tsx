@@ -74,7 +74,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.16</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.17</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -102,8 +102,8 @@ export default function NavigationHeader() {
               </div>
             )}
 
-            {/* ===== 企業ロス統括管理者専用：自社の店舗を切り替えるセレクト（スマホでも表示） ===== */}
-            {role === 'company_loss_manager' && stores.length > 0 && pathname !== '/store-manager/analytics' && (
+            {/* ===== 企業ロス統括管理者・エリアロス統括マネージャー専用：店舗を切り替えるセレクト（スマホでも表示） ===== */}
+            {(role === 'company_loss_manager' || role === 'area_loss_manager') && stores.length > 0 && pathname !== '/store-manager/analytics' && (
               <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-2 sm:px-3 py-1.5">
                 <span className="text-xs font-bold text-emerald-700 mr-1 sm:mr-2">🏪 店舗:</span>
                 <select
@@ -120,8 +120,8 @@ export default function NavigationHeader() {
               </div>
             )}
 
-            {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin/企業ロス統括管理者は別の場所で管理）===== */}
-            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && role !== 'company_loss_manager' && !isXmasUser && (
+            {/* ===== シェフ向け：店舗表示UI（master/admin/manager/super_admin/企業・エリアロス管理者は別の場所で管理）===== */}
+            {stores.length > 0 && activeStoreId && !isManager && !isMasterOrAdmin && role !== 'super_admin' && role !== 'company_loss_manager' && role !== 'area_loss_manager' && !isXmasUser && (
               <div className="hidden sm:flex items-center bg-slate-100 rounded-lg px-3 py-1.5 border border-slate-200">
                 <span className="text-xs font-bold text-slate-500 mr-2">📍 店舗:</span>
                 {(user.storeIds && user.storeIds.length > 1) ? (
@@ -176,7 +176,7 @@ export default function NavigationHeader() {
       )}
 
       {/* 管理者・マスタモード・Super Admin時のみ表示される追加ナビゲーションバー */}
-      {(role === 'master' || role === 'admin' || role === 'super_admin' || role === 'store_loss_manager' || role === 'company_loss_manager') && (
+      {(role === 'master' || role === 'admin' || role === 'super_admin' || role === 'store_loss_manager' || role === 'company_loss_manager' || role === 'area_loss_manager') && (
         <div className="bg-slate-100 border-t border-slate-200 px-4 py-2 flex items-center gap-4 overflow-x-auto text-sm">
           {role === 'super_admin' && (
             <>
@@ -209,13 +209,13 @@ export default function NavigationHeader() {
             </>
           )}
 
-          {(role === 'store_loss_manager' || role === 'company_loss_manager') && (
+          {(role === 'store_loss_manager' || role === 'company_loss_manager' || role === 'area_loss_manager') && (
             <>
               <span className="font-bold text-slate-500 flex-shrink-0 mr-2">Loss Menu:</span>
               <Link href="/store-manager/waste" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/waste' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📸 ロスパン登録</Link>
               <Link href="/store-manager/analytics" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/analytics' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📊 実績解析</Link>
               <Link href="/store-manager/profile" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/profile' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏪 店舗基礎データ</Link>
-              {role === 'company_loss_manager' && (
+              {(role === 'company_loss_manager' || role === 'area_loss_manager') && (
                 <Link href="/store-manager/products" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/products' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏷️ 販売商品マスタ</Link>
               )}
             </>

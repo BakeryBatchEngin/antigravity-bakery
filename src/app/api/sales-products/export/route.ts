@@ -21,7 +21,7 @@ export async function GET() {
       return NextResponse.json({ error: '認証エラー' }, { status: 401 });
     }
 
-    if (!['company_loss_manager', 'admin', 'super_admin'].includes(user.role)) {
+    if (!['company_loss_manager', 'area_loss_manager', 'admin', 'super_admin'].includes(user.role)) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 });
     }
 

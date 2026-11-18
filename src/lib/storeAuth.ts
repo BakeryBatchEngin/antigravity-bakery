@@ -125,8 +125,8 @@ export async function resolveStoreAuth(
   const requestedStoreId = cookieValue && cookieValue !== 'manager' ? Number(cookieValue) : null;
   let resolvedStoreId: number | null = null;
 
-  // 1. シェフまたは店舗ロス管理者の場合: user_stores に登録された自店舗のみ
-  if (user.role === 'chef' || user.role === 'store_loss_manager') {
+  // 1. シェフ、店舗ロス管理者、またはエリアロス統括マネージャーの場合: user_stores に登録された自店舗・担当店舗のみ
+  if (user.role === 'chef' || user.role === 'store_loss_manager' || user.role === 'area_loss_manager') {
     const userStores = await db.all(
       'SELECT store_id FROM user_stores WHERE user_id = $1 ORDER BY store_id ASC',
       [user.id]
@@ -137,7 +137,7 @@ export async function resolveStoreAuth(
         storeId: null,
         db: null,
         errorResponse: NextResponse.json(
-          { error: '所属店舗が設定されていません。管理者に連絡してください。' },
+          { error: '担当店舗が設定されていません。管理者に連絡してください。' },
           { status: 403 }
         ),
       };

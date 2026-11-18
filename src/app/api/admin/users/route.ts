@@ -10,6 +10,7 @@ const ALLOWED_TENANT_ROLES = [
   'chef',
   'store_loss_manager',
   'company_loss_manager',
+  'area_loss_manager',
 ];
 
 // セッションからユーザー情報を取得する共通処理

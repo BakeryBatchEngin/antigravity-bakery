@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     // 店舗一覧: super_admin は全店舗、それ以外は「自社（テナント）の店舗のみ」を返す
     // （他社の店舗名がブラウザに渡らないようにする）
-    const storesRes = (sessionData.role === 'super_admin' || sessionData.tenant_id == null)
+    let storesRes = (sessionData.role === 'super_admin' || sessionData.tenant_id == null)
       ? await db.all('SELECT id, store_code, store_name FROM stores ORDER BY store_code ASC')
       : await db.all(
           'SELECT id, store_code, store_name FROM stores WHERE tenant_id = $1 ORDER BY store_code ASC',
@@ -54,6 +54,18 @@ export async function GET(request: NextRequest) {
     // 企業ロス統括管理者: 選択中の店舗が自社に無い／未選択なら、自社の先頭の店舗を選択中として返す
     // （ロス管理API側 resolveLossStoreId と同じ決め方）
     if (sessionData.role === 'company_loss_manager') {
+      const isOwnStore = typeof activeStoreId === 'number' && storesRes.some((s: any) => Number(s.id) === activeStoreId);
+      if (!isOwnStore) {
+        activeStoreId = storesRes.length > 0 ? Number(storesRes[0].id) : null;
+      }
+    }
+
+    // エリアロス統括管理者: チェックを入れた担当店舗（user_stores）のみに限定する
+    if (sessionData.role === 'area_loss_manager') {
+      const userStores = await db.all('SELECT store_id FROM user_stores WHERE user_id = $1', [sessionData.id]);
+      const userStoreIds = new Set((userStores || []).map((s: any) => Number(s.store_id)));
+      storesRes = (storesRes || []).filter((s: any) => userStoreIds.has(Number(s.id)));
+
       const isOwnStore = typeof activeStoreId === 'number' && storesRes.some((s: any) => Number(s.id) === activeStoreId);
       if (!isOwnStore) {
         activeStoreId = storesRes.length > 0 ? Number(storesRes[0].id) : null;
