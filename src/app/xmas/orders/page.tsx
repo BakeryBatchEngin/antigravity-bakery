@@ -498,6 +498,12 @@ export default function XmasOrdersPage() {
   // 編集・削除操作が可能なアカウント（本部以外、かつ「店舗ロック中ではない」こと）
   const canOperateOrders = !isHeadquarters && !isStoreReadonlyLocked;
 
+  // 商品サマリーマップ（上限数・残数用）
+  const productSummaryMap = productSummaries.reduce((acc, curr) => {
+    acc[curr.product_name] = curr;
+    return acc;
+  }, {} as Record<string, ProductSummary>);
+
   // 上限到達マップ
   const limitReachedMap = productSummaries.reduce((acc, curr) => {
     acc[curr.product_name] = curr.is_max_reached;
@@ -865,6 +871,10 @@ export default function XmasOrdersPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {XMAS_PRODUCTS.map((prodName) => {
                     const isMaxReached = limitReachedMap[prodName] || false;
+                    const summary = productSummaryMap[prodName];
+                    const maxLimit = summary?.max_limit || 0;
+                    const currentQty = summary?.current_quantity || 0;
+                    const remainingQty = maxLimit > 0 ? Math.max(0, maxLimit - currentQty) : null;
                     const itemState = formData.selectedProducts[prodName] || { selected: false, quantity: 1 };
                     const isSelected = itemState.selected;
                     const isSide = prodName.includes('シュトーレン');
@@ -912,8 +922,8 @@ export default function XmasOrdersPage() {
                             </div>
                           )}
 
-                          <div className="flex items-start justify-between gap-2">
-                            <label className="flex items-center gap-2 cursor-pointer flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -921,17 +931,33 @@ export default function XmasOrdersPage() {
                                 onChange={() => handleProductToggle(prodName)}
                                 className="w-5 h-5 text-red-600 rounded border-slate-300 focus:ring-red-500"
                               />
-                              <span className="text-base font-bold text-slate-900">
+                              <span className="text-base font-bold text-slate-900 truncate">
                                 {isSide && <span className="text-xs text-slate-400 font-normal mr-1">🥖</span>}
                                 {prodName}
                               </span>
                             </label>
 
-                            {isMaxReached && (
-                              <span className="px-2 py-0.5 rounded text-[11px] font-black bg-red-600 text-white flex-shrink-0">
-                                受付上限
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {remainingQty !== null && (
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-xs font-bold border transition-colors ${
+                                    remainingQty === 0
+                                      ? 'bg-red-50 text-red-700 border-red-200'
+                                      : remainingQty <= 10
+                                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}
+                                >
+                                  残り: {remainingQty}個
+                                </span>
+                              )}
+
+                              {isMaxReached && (
+                                <span className="px-2 py-0.5 rounded text-[11px] font-black bg-red-600 text-white flex-shrink-0">
+                                  受付上限
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
