@@ -29,44 +29,79 @@ export default function Home() {
   const [isImporting, setIsImporting] = useState(false);
   const excelInputRef = React.useRef<HTMLInputElement>(null);
 
-  // 確認用の表（プレビュー）の状態
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<{
+  type OverlappingProduct = {
+    date: string;
+    dateLabel: string;
+    productCode: string;
+    productName: string;
+    existingQuantity: number;
+    newQuantity: number;
+  };
+
+  type OrderPreviewData = {
     dates: { date: string; label: string }[];
     rows: { productCode: string; productName: string; quantities: number[] }[];
+    sheetNames?: string[];
     existingDates: string[];
+    existingCount?: number;
+    overlappingProducts?: OverlappingProduct[];
     skippedProductsCount: number;
     nameMatchedCount?: number;
     warnings: string[];
-  } | null>(null);
+  };
 
-  // ファイル選択時: まずDBに書き込まず、内容を解析して確認用の表を表示する
+  // 確認用の表（プレビュー）の状態
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // シート選択モーダル用ステート
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+  const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
+
+  // プレビュー用ステート
+  const [preview, setPreview] = useState<OrderPreviewData | null>(null);
+
+  // 取込方法（追加/置き換え）選択モーダル用ステート
+  const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
+
+  // ファイル選択時: まずExcel内の全シート名一覧を取得し、シート選択画面を表示
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setPendingFile(file);
     setIsImporting(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('mode', 'preview');
+      formData.append('mode', 'get-sheets');
 
       const res = await fetch('/api/orders/import-weekly', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
       const resData = await res.json();
       if (!res.ok) {
-        alert(`${resData.error || '読み込みに失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
+        alert(`${resData.error || 'シートの読み込みに失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
+        setPendingFile(null);
         return;
       }
 
-      setPendingFile(file);
-      setPreview(resData);
+      const sheets: string[] = resData.sheets || [];
+      if (sheets.length === 0) {
+        alert('エクセルファイル内にワークシートが見つかりませんでした。');
+        setPendingFile(null);
+        return;
+      }
+
+      setAvailableSheets(sheets);
+      setSelectedSheets([...sheets]); // デフォルトですべて選択
+      setIsSheetModalOpen(true);
     } catch (err: any) {
       console.error(err);
       alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || '不明'}`);
+      setPendingFile(null);
     } finally {
       setIsImporting(false);
       if (excelInputRef.current) {
@@ -75,23 +110,90 @@ export default function Home() {
     }
   };
 
-  // 確認用の表を閉じる
+  const toggleSheet = (sheetName: string) => {
+    setSelectedSheets(prev =>
+      prev.includes(sheetName) ? prev.filter(s => s !== sheetName) : [...prev, sheetName]
+    );
+  };
+
+  const selectAllSheets = () => {
+    setSelectedSheets([...availableSheets]);
+  };
+
+  const deselectAllSheets = () => {
+    setSelectedSheets([]);
+  };
+
+  const closeSheetModal = () => {
+    setIsSheetModalOpen(false);
+    setPendingFile(null);
+    setAvailableSheets([]);
+    setSelectedSheets([]);
+  };
+
+  // 選択したシート群で解析（プレビュー取得）を実行
+  const handleProceedToPreview = async () => {
+    if (!pendingFile) return;
+    if (selectedSheets.length === 0) {
+      alert('読み込むシートを1つ以上選択してください。');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+      formData.append('mode', 'preview');
+      formData.append('sheetNames', JSON.stringify(selectedSheets));
+
+      const res = await fetch('/api/orders/import-weekly', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        alert(`${resData.error || '読み込みに失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
+        return;
+      }
+
+      setIsSheetModalOpen(false);
+      setPreview(resData);
+    } catch (err: any) {
+      console.error(err);
+      alert(`エクセルの解析に失敗しました\n理由: ${err.message || '不明'}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // プレビューを閉じる
   const closePreview = () => {
     setPendingFile(null);
     setPreview(null);
+    setIsConflictModalOpen(false);
   };
 
-  // 「登録実行」ボタン: すでにオーダーがある日があれば、確認してから上書き登録する
-  const handleCommitImport = async () => {
+  // 「登録実行」ボタン押下時
+  const handleCommitClick = () => {
     if (!pendingFile || !preview) return;
 
+    // すでにオーダーが登録されている日があれば、追加か置き換えかを尋ねるモーダルを表示
     if (preview.existingDates.length > 0) {
-      const labels = preview.dates
-        .filter(d => preview.existingDates.includes(d.date))
-        .map(d => d.label)
-        .join('、');
+      setIsConflictModalOpen(true);
+    } else {
+      // 既存オーダーがなければ直接追加登録を実行
+      executeCommit('append');
+    }
+  };
+
+  // 取込実行（append: 追加, replace: 置き換え）
+  const executeCommit = async (importType: 'append' | 'replace') => {
+    if (!pendingFile || !preview) return;
+
+    if (importType === 'replace') {
       const ok = window.confirm(
-        `次の日付には、すでにオーダーが登録されています。\n\n${labels}\n\n上書きして登録してもよろしいですか？`
+        '対象日の既存オーダーをすべて削除し、今回のExcelデータですべて置き換えます。\n\n本当によろしいですか？'
       );
       if (!ok) return;
     }
@@ -101,10 +203,14 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', pendingFile);
       formData.append('mode', 'commit');
+      formData.append('importType', importType);
+      if (preview.sheetNames && preview.sheetNames.length > 0) {
+        formData.append('sheetNames', JSON.stringify(preview.sheetNames));
+      }
 
       const res = await fetch('/api/orders/import-weekly', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
       const resData = await res.json();
@@ -113,8 +219,9 @@ export default function Home() {
         return;
       }
 
+      const actionText = importType === 'append' ? '追加登録' : '置き換え登録';
       alert(
-        `オーダー表を登録しました！（${resData.datesCount}日分 / 販売商品マスタ一致: ${resData.productsCount}品目${resData.nameMatchedCount > 0 ? ` ※商品名一致: ${resData.nameMatchedCount}品目` : ''} / 計${resData.ordersCount}件の発注）`
+        `オーダー表を${actionText}しました！（${resData.datesCount}日分 / 販売商品マスタ一致: ${resData.productsCount}品目${resData.nameMatchedCount > 0 ? ` ※商品名一致: ${resData.nameMatchedCount}品目` : ''} / 計${resData.ordersCount}件の発注）`
       );
       closePreview();
     } catch (err: any) {
@@ -406,22 +513,245 @@ export default function Home() {
         </>
       )}
 
-      {/* ===== オーダー表 取込内容の確認モーダル ===== */}
+      {/* ===== 1. シート選択モーダル ===== */}
+      {isSheetModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col border border-slate-200 dark:border-slate-800">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📑</span>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                  どのシートを読み込みますか？
+                </h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1.5">
+                読み込みたいシートにチェックを入れてください。複数週（Week45, Week46…）やカテゴリー別のシートをまとめて同時に読み込めます。
+              </p>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  選択中: <strong className="text-emerald-600 dark:text-emerald-400">{selectedSheets.length}</strong> / {availableSheets.length} シート
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllSheets}
+                    className="text-xs px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg transition"
+                  >
+                    すべて選択
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllSheets}
+                    className="text-xs px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg transition"
+                  >
+                    すべて解除
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 max-h-72 overflow-y-auto space-y-2">
+              {availableSheets.map(sheet => {
+                const isChecked = selectedSheets.includes(sheet);
+                return (
+                  <label
+                    key={sheet}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      isChecked
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+                        : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleSheet(sheet)}
+                      className="w-5 h-5 accent-emerald-600 rounded"
+                    />
+                    <span className="font-bold text-sm flex-1">{sheet}</span>
+                    {isChecked && (
+                      <span className="text-xs bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold">
+                        選択中
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={closeSheetModal}
+                className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedToPreview}
+                disabled={selectedSheets.length === 0 || isImporting}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition text-sm shadow disabled:opacity-40 flex items-center gap-2"
+              >
+                {isImporting && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>選択したシートを解析（{selectedSheets.length}枚）</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 2. 既存オーダー取込方法（追加 / 置き換え）選択モーダル ===== */}
+      {isConflictModalOpen && preview && (
+        <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-xl flex flex-col border border-slate-200 dark:border-slate-800">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">⚠️</span>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                  既存オーダーの登録方法を選択
+                </h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1.5">
+                次の日付には、すでにオーダーが登録されています：
+              </p>
+              <div className="mt-2 text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                📅 {preview.dates.filter(d => preview.existingDates.includes(d.date)).map(d => d.label).join('、')}
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* 重複状況の案内 */}
+              {(!preview.overlappingProducts || preview.overlappingProducts.length === 0) ? (
+                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-bold text-sm">
+                    <span>✅</span>
+                    <span>商品の重複（かぶり）はありません</span>
+                  </div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1.5 leading-relaxed">
+                    すでに登録されている商品と、今回取り込む商品に重複はありません。「追加して登録」を選ぶと、既存のオーダー（別カテゴリー等）を残したまま今回の商品を追加できます。
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-bold text-sm">
+                    <span>⚠️</span>
+                    <span>以下の商品が同じ日付にすでに登録されています（計 {preview.overlappingProducts.length} 件）</span>
+                  </div>
+                  <div className="mt-2 max-h-32 overflow-y-auto space-y-1 text-xs text-amber-900 dark:text-amber-100 font-mono bg-white/60 dark:bg-black/30 p-2.5 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                    {preview.overlappingProducts.map((op, idx) => (
+                      <div key={idx} className="flex justify-between items-center py-0.5">
+                        <span>【{op.dateLabel}】{op.productName}</span>
+                        <span className="font-bold">既存: {op.existingQuantity}個 → 今回: {op.newQuantity}個</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-2">
+                    ※「追加して登録」を選択した場合、上記で重複している商品は今回の数量に更新され、重複していない新規商品は追加されます。
+                  </p>
+                </div>
+              )}
+
+              {/* 2つの選択カード */}
+              <div className="space-y-3 pt-1">
+                {/* 選択肢1: 追加 */}
+                <button
+                  type="button"
+                  onClick={() => executeCommit('append')}
+                  disabled={isImporting}
+                  className="w-full text-left p-4 rounded-xl border-2 border-emerald-500 hover:border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all group flex items-start gap-3.5 shadow-sm"
+                >
+                  <span className="text-2xl mt-0.5 group-hover:scale-110 transition-transform">➕</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-base text-emerald-900 dark:text-emerald-200">
+                        追加して登録（推奨）
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-100 rounded-full">
+                        既存データを保持
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                      既存のオーダー（別カテゴリーの商品など）を残したまま、今回のデータを追加します。
+                      {preview.overlappingProducts && preview.overlappingProducts.length > 0 && '（※重複商品は今回の数量に更新されます）'}
+                    </p>
+                  </div>
+                </button>
+
+                {/* 選択肢2: 置き換え */}
+                <button
+                  type="button"
+                  onClick={() => executeCommit('replace')}
+                  disabled={isImporting}
+                  className="w-full text-left p-4 rounded-xl border border-slate-300 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-600 bg-white dark:bg-slate-800/60 hover:bg-red-50/30 dark:hover:bg-red-950/20 transition-all group flex items-start gap-3.5"
+                >
+                  <span className="text-2xl mt-0.5 group-hover:scale-110 transition-transform">🔄</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-base text-slate-800 dark:text-slate-200 group-hover:text-red-700 dark:group-hover:text-red-300">
+                        すべて置き換えて登録
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full">
+                        対象日を全削除
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      対象日の既存オーダーをすべて削除し、今回のExcelの内容にすべて置き換えます。
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => setIsConflictModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition text-sm"
+              >
+                戻る
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 3. オーダー表 取込内容の確認モーダル（プレビュー） ===== */}
       {preview && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800">
             <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">オーダー表の読み込み内容を確認</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span>📥 オーダー表の読み込み内容を確認</span>
+                  {preview.sheetNames && preview.sheetNames.length > 0 && (
+                    <span className="text-xs font-bold px-2.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-full border border-indigo-200 dark:border-indigo-800">
+                      シート: {preview.sheetNames.join(', ')}（計{preview.sheetNames.length}枚）
+                    </span>
+                  )}
+                </h3>
+              </div>
+
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 {preview.rows.length}品目 / {preview.dates.length}日分（販売商品マスタに登録済みで、いずれかの日のオーダーが1以上の商品のみ）
               </p>
+
               {preview.existingDates.length > 0 && (
-                <p className="mt-2 text-sm font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">
-                  ⚠ すでにオーダーが登録されている日があります（
-                  {preview.dates.filter(d => preview.existingDates.includes(d.date)).map(d => d.label).join('、')}
-                  ）。登録実行すると上書きされます。
-                </p>
+                <div className="mt-2 text-xs font-semibold rounded-lg px-3 py-2 border flex items-center justify-between flex-wrap gap-1.5 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200">
+                  <span className="flex items-center gap-1.5">
+                    <span>ℹ</span>
+                    <span>
+                      対象日のうち <strong>{preview.existingDates.length}日分</strong> にすでにオーダーが登録されています（
+                      {(!preview.overlappingProducts || preview.overlappingProducts.length === 0)
+                        ? '商品のかぶりなし・追加可能'
+                        : `${preview.overlappingProducts.length}件で重複あり`}
+                      ）
+                    </span>
+                  </span>
+                  <span className="text-[11px] underline opacity-80">※登録時に「追加」か「置き換え」を選択できます</span>
+                </div>
               )}
+
               {preview.skippedProductsCount > 0 && (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   ※販売商品マスタに未登録のためスキップした商品: {preview.skippedProductsCount}品目
@@ -477,7 +807,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={handleCommitImport}
+                onClick={handleCommitClick}
                 disabled={isImporting}
                 className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 flex items-center gap-2 shadow-md transition-colors"
               >

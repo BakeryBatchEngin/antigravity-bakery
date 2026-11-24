@@ -25,6 +25,9 @@ interface SalesProduct {
   retail_price: number;
   category: string;
   characteristics: string;
+  alias_1?: string;
+  alias_2?: string;
+  alias_3?: string;
 }
 
 const PRESET_CATEGORIES = [
@@ -59,6 +62,9 @@ export default function SalesProductsMasterPage() {
   const [formPrice, setFormPrice] = useState<string>('0');
   const [formCategory, setFormCategory] = useState('');
   const [formCharacteristics, setFormCharacteristics] = useState('');
+  const [formAlias1, setFormAlias1] = useState('');
+  const [formAlias2, setFormAlias2] = useState('');
+  const [formAlias3, setFormAlias3] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,6 +106,9 @@ export default function SalesProductsMasterPage() {
     setFormPrice('0');
     setFormCategory('');
     setFormCharacteristics('');
+    setFormAlias1('');
+    setFormAlias2('');
+    setFormAlias3('');
     setIsModalOpen(true);
   };
 
@@ -111,6 +120,9 @@ export default function SalesProductsMasterPage() {
     setFormPrice(String(product.retail_price ?? 0));
     setFormCategory(product.category || '');
     setFormCharacteristics(product.characteristics || '');
+    setFormAlias1(product.alias_1 || '');
+    setFormAlias2(product.alias_2 || '');
+    setFormAlias3(product.alias_3 || '');
     setIsModalOpen(true);
   };
 
@@ -136,6 +148,9 @@ export default function SalesProductsMasterPage() {
           retail_price: Number(formPrice) || 0,
           category: formCategory.trim(),
           characteristics: formCharacteristics.trim(),
+          alias_1: formAlias1.trim(),
+          alias_2: formAlias2.trim(),
+          alias_3: formAlias3.trim(),
         }),
       });
 
@@ -238,7 +253,10 @@ export default function SalesProductsMasterPage() {
       p.product_code.toLowerCase().includes(q) ||
       p.product_name.toLowerCase().includes(q) ||
       (p.category || '').toLowerCase().includes(q) ||
-      (p.characteristics || '').toLowerCase().includes(q);
+      (p.characteristics || '').toLowerCase().includes(q) ||
+      (p.alias_1 || '').toLowerCase().includes(q) ||
+      (p.alias_2 || '').toLowerCase().includes(q) ||
+      (p.alias_3 || '').toLowerCase().includes(q);
     return matchesCategory && matchesQuery;
   });
 
@@ -411,7 +429,21 @@ export default function SalesProductsMasterPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
-                      {product.product_name}
+                      <div>{product.product_name}</div>
+                      {(product.alias_1 || product.alias_2 || product.alias_3) && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {[product.alias_1, product.alias_2, product.alias_3]
+                            .filter(Boolean)
+                            .map((alias, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center text-[11px] font-normal px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200"
+                              >
+                                別名: {alias}
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
                       ¥{(product.retail_price || 0).toLocaleString()}
@@ -510,7 +542,7 @@ export default function SalesProductsMasterPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  商品名（オーダー表ExcelのC列と一致する名称） <span className="text-red-500">*</span>
+                  商品名（オーダー表Excelの照合基準となる正式名称） <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -520,6 +552,48 @@ export default function SalesProductsMasterPage() {
                   placeholder="例: バゲット"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* 別名（エイリアス）登録（最大3つ） */}
+              <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-blue-900">
+                    表記ゆれ・別名の登録（任意・最大3つ）
+                  </label>
+                  <span className="text-[10px] text-blue-600 font-medium">店舗エクセル独自の略称や表記</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  各店舗のエクセルで使われている略称や表記（例: 「ワッサン」「チャバタ大」など）を登録すると、自動的にこの商品として認識されます。
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div>
+                    <input
+                      type="text"
+                      value={formAlias1}
+                      onChange={e => setFormAlias1(e.target.value)}
+                      placeholder="別名 1 (例: ワッサン)"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={formAlias2}
+                      onChange={e => setFormAlias2(e.target.value)}
+                      placeholder="別名 2"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={formAlias3}
+                      onChange={e => setFormAlias3(e.target.value)}
+                      placeholder="別名 3"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

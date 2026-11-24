@@ -67,10 +67,16 @@ export async function POST(req: Request) {
     let priceCol = 3;
     let catCol = 4;
     let charCol = 5;
+    let alias1Col = -1;
+    let alias2Col = -1;
+    let alias3Col = -1;
 
     for (let c = 1; c <= headerRow.cellCount; c++) {
       const h = getCellText(headerRow.getCell(c));
       if (h.includes('コード') || h.toLowerCase() === 'product_code') codeCol = c;
+      else if (h.includes('別名1') || h.toLowerCase() === 'alias_1' || h.toLowerCase() === 'alias1') alias1Col = c;
+      else if (h.includes('別名2') || h.toLowerCase() === 'alias_2' || h.toLowerCase() === 'alias2') alias2Col = c;
+      else if (h.includes('別名3') || h.toLowerCase() === 'alias_3' || h.toLowerCase() === 'alias3') alias3Col = c;
       else if (h.includes('商品名') || h.toLowerCase() === 'product_name') nameCol = c;
       else if (h.includes('価格') || h.includes('売価') || h.includes('単価') || h.toLowerCase() === 'retail_price') priceCol = c;
       else if (h.includes('カテゴリ') || h.toLowerCase() === 'category') catCol = c;
@@ -83,6 +89,9 @@ export async function POST(req: Request) {
       retailPrice: number;
       category: string;
       characteristics: string;
+      alias1: string;
+      alias2: string;
+      alias3: string;
     }
 
     const items: ParsedItem[] = [];
@@ -96,6 +105,9 @@ export async function POST(req: Request) {
       const retailPrice = Math.max(0, Math.round(Number(rawPrice) || 0));
       const category = getCellText(row.getCell(catCol));
       const characteristics = getCellText(row.getCell(charCol));
+      const alias1 = alias1Col > 0 ? getCellText(row.getCell(alias1Col)) : '';
+      const alias2 = alias2Col > 0 ? getCellText(row.getCell(alias2Col)) : '';
+      const alias3 = alias3Col > 0 ? getCellText(row.getCell(alias3Col)) : '';
 
       items.push({
         productCode,
@@ -103,6 +115,9 @@ export async function POST(req: Request) {
         retailPrice,
         category,
         characteristics,
+        alias1,
+        alias2,
+        alias3,
       });
     }
 
@@ -136,19 +151,19 @@ export async function POST(req: Request) {
         }
         await db.run(
           `UPDATE store_products
-           SET product_name = ?, retail_price = ?, category = ?, characteristics = ?, updated_at = CURRENT_TIMESTAMP
+           SET product_name = ?, retail_price = ?, category = ?, characteristics = ?, alias_1 = ?, alias_2 = ?, alias_3 = ?, updated_at = CURRENT_TIMESTAMP
            WHERE id = ? AND tenant_id = ?`,
-          [item.productName, item.retailPrice, item.category, item.characteristics, byCode.id, tenantId]
+          [item.productName, item.retailPrice, item.category, item.characteristics, item.alias1, item.alias2, item.alias3, byCode.id, tenantId]
         );
         updatedCount++;
       } else if (byName) {
-        // 同じ商品名が既に存在していた場合は、その商品のコード・価格・カテゴリ・特性を最新に更新
+        // 同じ商品名が既に存在していた場合は、その商品のコード・価格・カテゴリ・特性・別名を最新に更新
         const oldCode = byName.product_code;
         await db.run(
           `UPDATE store_products
-           SET product_code = ?, retail_price = ?, category = ?, characteristics = ?, updated_at = CURRENT_TIMESTAMP
+           SET product_code = ?, retail_price = ?, category = ?, characteristics = ?, alias_1 = ?, alias_2 = ?, alias_3 = ?, updated_at = CURRENT_TIMESTAMP
            WHERE id = ? AND tenant_id = ?`,
-          [item.productCode, item.retailPrice, item.category, item.characteristics, byName.id, tenantId]
+          [item.productCode, item.retailPrice, item.category, item.characteristics, item.alias1, item.alias2, item.alias3, byName.id, tenantId]
         );
         if (oldCode !== item.productCode) {
           await db.run(
@@ -165,9 +180,9 @@ export async function POST(req: Request) {
         updatedCount++;
       } else {
         await db.run(
-          `INSERT INTO store_products (tenant_id, product_code, product_name, retail_price, category, characteristics)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [tenantId, item.productCode, item.productName, item.retailPrice, item.category, item.characteristics]
+          `INSERT INTO store_products (tenant_id, product_code, product_name, retail_price, category, characteristics, alias_1, alias_2, alias_3)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [tenantId, item.productCode, item.productName, item.retailPrice, item.category, item.characteristics, item.alias1, item.alias2, item.alias3]
         );
         insertedCount++;
       }

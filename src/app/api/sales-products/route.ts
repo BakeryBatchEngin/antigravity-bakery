@@ -42,7 +42,7 @@ export async function GET() {
     }
 
     const products = await db.all(
-      `SELECT id, tenant_id, product_code, product_name, retail_price, category, characteristics, created_at, updated_at
+      `SELECT id, tenant_id, product_code, product_name, retail_price, category, characteristics, alias_1, alias_2, alias_3, created_at, updated_at
        FROM store_products
        WHERE tenant_id = ?
        ORDER BY product_code ASC`,
@@ -104,6 +104,9 @@ export async function POST(req: Request) {
     const retailPrice = Math.max(0, Math.round(Number(body.retail_price) || 0));
     const category = String(body.category || '').trim();
     const characteristics = String(body.characteristics || '').trim();
+    const alias1 = String(body.alias_1 || '').trim();
+    const alias2 = String(body.alias_2 || '').trim();
+    const alias3 = String(body.alias_3 || '').trim();
 
     if (!productCode || !productName) {
       return NextResponse.json(
@@ -147,9 +150,9 @@ export async function POST(req: Request) {
 
       await db.run(
         `UPDATE store_products
-         SET product_code = ?, product_name = ?, retail_price = ?, category = ?, characteristics = ?, updated_at = CURRENT_TIMESTAMP
+         SET product_code = ?, product_name = ?, retail_price = ?, category = ?, characteristics = ?, alias_1 = ?, alias_2 = ?, alias_3 = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND tenant_id = ?`,
-        [productCode, productName, retailPrice, category, characteristics, id, tenantId]
+        [productCode, productName, retailPrice, category, characteristics, alias1, alias2, alias3, id, tenantId]
       );
 
       // 商品コードまたは商品名が変わった場合、自社店舗のオーダー・ロス記録も同期しておく
@@ -190,9 +193,9 @@ export async function POST(req: Request) {
       }
 
       await db.run(
-        `INSERT INTO store_products (tenant_id, product_code, product_name, retail_price, category, characteristics)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [tenantId, productCode, productName, retailPrice, category, characteristics]
+        `INSERT INTO store_products (tenant_id, product_code, product_name, retail_price, category, characteristics, alias_1, alias_2, alias_3)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [tenantId, productCode, productName, retailPrice, category, characteristics, alias1, alias2, alias3]
       );
     }
 

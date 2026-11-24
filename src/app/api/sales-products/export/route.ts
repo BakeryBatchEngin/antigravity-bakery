@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     const products = await db.all(
-      `SELECT product_code, product_name, retail_price, category, characteristics
+      `SELECT product_code, product_name, retail_price, category, characteristics, alias_1, alias_2, alias_3
        FROM store_products
        WHERE tenant_id = ?
        ORDER BY product_code ASC`,
@@ -47,7 +47,10 @@ export async function GET() {
       { header: '商品名', key: 'product_name', width: 32 },
       { header: '価格', key: 'retail_price', width: 14 },
       { header: '商品カテゴリー', key: 'category', width: 22 },
-      { header: '商品の特性', key: 'characteristics', width: 55 },
+      { header: '商品の特性', key: 'characteristics', width: 45 },
+      { header: '別名1', key: 'alias_1', width: 20 },
+      { header: '別名2', key: 'alias_2', width: 20 },
+      { header: '別名3', key: 'alias_3', width: 20 },
     ];
 
     sheet.getRow(1).font = { bold: true };
@@ -65,6 +68,9 @@ export async function GET() {
         retail_price: 351,
         category: 'ハード系',
         characteristics: '看板商品・夕方まで欠品厳禁・翌日ラスク加工可',
+        alias_1: 'バケット',
+        alias_2: 'フランスパン',
+        alias_3: '',
       });
     } else {
       for (const p of products) {
@@ -74,6 +80,9 @@ export async function GET() {
           retail_price: p.retail_price ?? 0,
           category: p.category || '',
           characteristics: p.characteristics || '',
+          alias_1: p.alias_1 || '',
+          alias_2: p.alias_2 || '',
+          alias_3: p.alias_3 || '',
         });
       }
     }

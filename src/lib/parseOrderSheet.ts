@@ -16,6 +16,7 @@ export interface ParsedOrderSheet {
   dates: ParsedOrderDate[];
   rows: ParsedOrderRow[]; // 「いずれかの日にオーダー1以上」の行のみ（商品マスタの絞り込み前）
   warnings: string[];
+  sheetNames?: string[];
 }
 
 // 日付を横に探すときの最大列間隔（この列数進んでも次の日付が出なければ終了）
@@ -77,24 +78,20 @@ function parseDateCell(value: unknown): { y: number; m: number; d: number } | nu
   return null;
 }
 
-// オーダー表を柔軟に解析する（ExcelJS による安全な実装）
-export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderSheet> {
+// ワークブックからシート名一覧を取得する関数
+export async function getOrderWorkbookSheets(data: Uint8Array): Promise<string[]> {
   const workbook = new ExcelJS.Workbook();
-  // Node.js Buffer に変換してロード
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   await workbook.xlsx.load(buffer as any);
+  return workbook.worksheets.map(ws => ws.name);
+}
 
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) {
-    throw new Error('ワークシートが見つかりません。');
-  }
-
+// 単一シートの解析
+function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrderDate[]; rows: ParsedOrderRow[]; warnings: string[] } | null {
   const warnings: string[] = [];
   const maxScanRows = Math.min(worksheet.rowCount, 15);
 
-  // ----------------------------------------------------
   // 1. 日付行を動的に探索（1行目〜15行目をスキャン）
-  // ----------------------------------------------------
   let dateRowNumber = -1;
   let maxDateCount = 0;
 
@@ -113,16 +110,15 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
       }
     }
 
-    // 2つ以上の日付セルが見つかり、過去最多の行を日付行と判定
     if (dateCount >= 2 && dateCount > maxDateCount) {
       maxDateCount = dateCount;
       dateRowNumber = r;
     }
   }
 
-  // 日付行が特定できなかった場合
+  // 日付行が見つからないシートはnullを返してスキップ可能にする
   if (dateRowNumber < 0) {
-    throw new Error('シートの上部（1〜15行目）に日付が見つかりません。オーダー表の日付形式をご確認ください。');
+    return null;
   }
 
   const dateRow = worksheet.getRow(dateRowNumber);
@@ -143,7 +139,6 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
     if (parsed) {
       if (firstDateCol === -1) firstDateCol = c;
       const dateStr = `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
-      // 重複チェック
       const alreadyExists = dateCols.some(
         d => `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` === dateStr
       );
@@ -152,18 +147,15 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
         lastDateCol = c;
       }
     } else if (lastDateCol > 0 && c - lastDateCol >= MAX_DATE_GAP) {
-      // 日付が一定列数途切れたら終了
       break;
     }
   }
 
   if (dateCols.length === 0) {
-    throw new Error(`${dateRowNumber}行目に日付が見つかりませんでした。オーダー表の形式をご確認ください。`);
+    return null;
   }
 
-  // ----------------------------------------------------
   // 2. 「オーダー」列＆ヘッダー行を探索（日付行の直下〜+4行以内）
-  // ----------------------------------------------------
   let headerRowNumber = -1;
   let bestOrderMatches = 0;
   const maxHeaderSearchRow = Math.min(worksheet.rowCount, dateRowNumber + 4);
@@ -191,7 +183,6 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
     }
   }
 
-  // もしオーダー行が見つからなければ、日付行の次の行をフォールバックとして採用
   if (headerRowNumber < 0) {
     headerRowNumber = dateRowNumber + 1;
   }
@@ -207,7 +198,6 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
     const end = i + 1 < dateCols.length ? dateCols[i + 1].col - 1 : start + MAX_DATE_GAP - 1;
     let orderCol = -1;
 
-    // 1. 完全一致（「オーダー」）を最優先
     for (let c = start; c <= end; c++) {
       const headerText = normalizeHeader(headerRow.getCell(c).value);
       if (headerText === 'オーダー') {
@@ -216,7 +206,6 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
       }
     }
 
-    // 2. 「オーダー」がなければ「発注」「オーダー数」「発注数」などを探す
     if (orderCol < 0) {
       for (let c = start; c <= end; c++) {
         const headerText = normalizeHeader(headerRow.getCell(c).value);
@@ -227,7 +216,6 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
       }
     }
 
-    // 3. それでも見つからない場合、日付列自体（start）に数字が入る構成なら start 列を採用
     if (orderCol < 0 && start === end) {
       orderCol = start;
     }
@@ -235,7 +223,7 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
     const dt = dateCols[i];
     const dateStr = `${dt.y}-${String(dt.m).padStart(2, '0')}-${String(dt.d).padStart(2, '0')}`;
     if (orderCol < 0) {
-      warnings.push(`${dt.m}月${dt.d}日の範囲に「オーダー」列が見つからなかったため、この日は読み込みません。`);
+      warnings.push(`シート「${worksheet.name}」: ${dt.m}月${dt.d}日の範囲に「オーダー」列が見つからなかったため、この日は読み込みません。`);
       continue;
     }
 
@@ -244,44 +232,94 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
   }
 
   if (dates.length === 0) {
-    throw new Error('「オーダー」という表題の列が見つかりませんでした。オーダー表の形式をご確認ください。');
+    return null;
   }
 
-  // ----------------------------------------------------
-  // 3. 商品コード列と商品名列の動的特定（1〜5列目をスキャン）
-  // ----------------------------------------------------
-  let codeCol = 1; // デフォルト: A列
-  let nameCol = 2; // デフォルト: B列
+  // 3. 商品コード列と商品名列の動的特定（1〜日付列直前をスキャン）
+  let codeCol = -1;
+  let nameCol = -1;
+  const priceCols = new Set<number>();
+  const scanEndCol = firstDateCol > 1 ? firstDateCol : 6;
 
-  // 日付行〜ヘッダー行の中で列見出しを探す
   for (let r = Math.max(1, dateRowNumber - 1); r <= headerRowNumber; r++) {
     const row = worksheet.getRow(r);
-    for (let c = 1; c < (firstDateCol > 1 ? firstDateCol : 6); c++) {
+    for (let c = 1; c < scanEndCol; c++) {
       const text = normalizeHeader(row.getCell(c).value);
-      if (text.includes('商品コード') || text.includes('品番') || text === 'コード') {
+      if (!text) continue;
+
+      // 単価・金額・価格列の検知（これらは商品コード・商品名から絶対に除外）
+      if (
+        text.includes('単価') ||
+        text.includes('価格') ||
+        text.includes('定価') ||
+        text.includes('金額') ||
+        text.includes('売価')
+      ) {
+        priceCols.add(c);
+        continue;
+      }
+
+      // 商品コード列の検知
+      if (
+        text.includes('商品コード') ||
+        text.includes('品目コード') ||
+        text.includes('品番') ||
+        text.includes('アイテムコード') ||
+        text === 'コード'
+      ) {
         codeCol = c;
-      } else if (text.includes('商品名') || text.includes('品名') || text.includes('アイテム名') || text === '名称') {
+      }
+      // 商品名列の検知（「アイテム」「ｱｲﾃﾑ」等も確実にヒットさせる）
+      else if (
+        text.includes('商品名') ||
+        text.includes('品名') ||
+        text.includes('アイテム') ||
+        text.includes('ｱｲﾃﾑ') ||
+        text.includes('品目名') ||
+        text.includes('品目') ||
+        text === '名称' ||
+        text === '商品'
+      ) {
         nameCol = c;
       }
     }
   }
 
-  // ----------------------------------------------------
-  // 4. データ行の読み取り（ヘッダー行の直下〜最終行）
-  // ----------------------------------------------------
+  // フォールバック処理: ヘッダーで特定できなかった場合の判定
+  if (nameCol < 0) {
+    if (codeCol === 1 && priceCols.has(2)) {
+      // 1列目がcodeColと仮判定されたが2列目が単価の場合、実質1列目が商品名
+      nameCol = 1;
+      codeCol = -1;
+    } else {
+      // 単価列以外の列で最初の列を商品名列とする
+      for (let c = 1; c < scanEndCol; c++) {
+        if (!priceCols.has(c) && c !== codeCol) {
+          nameCol = c;
+          break;
+        }
+      }
+      if (nameCol < 0) nameCol = 1;
+    }
+  }
+
+  // もし codeCol が nameCol と同じ、または単価列に入っているなら無効化
+  if (codeCol === nameCol || priceCols.has(codeCol)) {
+    codeCol = -1;
+  }
+
+  // 4. データ行の読み取り
   const rows: ParsedOrderRow[] = [];
   const rowCount = worksheet.rowCount;
   const dataStartRow = headerRowNumber + 1;
 
   for (let r = dataStartRow; r <= rowCount; r++) {
     const row = worksheet.getRow(r);
-    const code = getTextValue(row.getCell(codeCol).value);
-    const name = getTextValue(row.getCell(nameCol).value);
+    const code = codeCol > 0 ? getTextValue(row.getCell(codeCol).value) : '';
+    const name = nameCol > 0 ? getTextValue(row.getCell(nameCol).value) : '';
 
-    // コードも商品名も両方空の場合は空行としてスキップ
     if (!code && !name) continue;
 
-    // 「合計」「小計」「総合計」「備考」などの集計行キーワードを除外
     const combined = (code + name).replace(/\s+/g, '');
     if (
       combined.includes('合計') ||
@@ -308,4 +346,106 @@ export async function parseOrderSheet(data: Uint8Array): Promise<ParsedOrderShee
   }
 
   return { dates, rows, warnings };
+}
+
+// オーダー表を柔軟に解析する（単一または複数シート対応）
+export async function parseOrderSheet(data: Uint8Array, targetSheetNames?: string[]): Promise<ParsedOrderSheet> {
+  const workbook = new ExcelJS.Workbook();
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  await workbook.xlsx.load(buffer as any);
+
+  if (workbook.worksheets.length === 0) {
+    throw new Error('ワークシートが見つかりません。');
+  }
+
+  // 解析対象のワークシートを決定
+  let targetSheets: ExcelJS.Worksheet[] = [];
+  if (targetSheetNames && targetSheetNames.length > 0) {
+    targetSheets = workbook.worksheets.filter(ws => targetSheetNames.includes(ws.name));
+  }
+  if (targetSheets.length === 0) {
+    targetSheets = [workbook.worksheets[0]];
+  }
+
+  const allWarnings: string[] = [];
+  const parsedSheets: { sheetName: string; dates: ParsedOrderDate[]; rows: ParsedOrderRow[] }[] = [];
+
+  for (const ws of targetSheets) {
+    const res = parseSingleWorksheet(ws);
+    if (!res) {
+      allWarnings.push(`シート「${ws.name}」にはオーダーの日付・発注形式が見つからなかったためスキップしました。`);
+      continue;
+    }
+    allWarnings.push(...res.warnings);
+    parsedSheets.push({
+      sheetName: ws.name,
+      dates: res.dates,
+      rows: res.rows,
+    });
+  }
+
+  if (parsedSheets.length === 0) {
+    throw new Error('選択されたシートの上部に日付が見つかりませんでした。オーダー表の日付形式をご確認ください。');
+  }
+
+  // 1. 全シートの日付を収集し、重複を除いて昇順ソート
+  const dateMap = new Map<string, string>(); // date(YYYY-MM-DD) -> label
+  for (const s of parsedSheets) {
+    for (const d of s.dates) {
+      if (!dateMap.has(d.date)) {
+        dateMap.set(d.date, d.label);
+      }
+    }
+  }
+
+  const sortedDates: ParsedOrderDate[] = Array.from(dateMap.keys())
+    .sort()
+    .map(date => ({ date, label: dateMap.get(date)! }));
+
+  const dateIndexMap = new Map<string, number>();
+  sortedDates.forEach((d, idx) => dateIndexMap.set(d.date, idx));
+
+  // 2. 商品行の統合
+  // 同一商品（商品コード一致、または商品名正規化一致）の数量を日付ごとに合算
+  // key: コード優先、なければ正規化名
+  const rowMap = new Map<string, { productCode: string; productName: string; quantities: number[] }>();
+
+  for (const s of parsedSheets) {
+    for (const r of s.rows) {
+      const normName = normalizeHeader(r.productName);
+      const key = r.productCode ? `code:${r.productCode}` : `name:${normName}`;
+
+      let entry = rowMap.get(key);
+      if (!entry) {
+        entry = {
+          productCode: r.productCode,
+          productName: r.productName,
+          quantities: new Array(sortedDates.length).fill(0),
+        };
+        rowMap.set(key, entry);
+      } else {
+        if (!entry.productCode && r.productCode) entry.productCode = r.productCode;
+        if (!entry.productName && r.productName) entry.productName = r.productName;
+      }
+
+      // 各日付の数量を合算
+      for (let i = 0; i < s.dates.length; i++) {
+        const d = s.dates[i].date;
+        const targetIdx = dateIndexMap.get(d);
+        if (targetIdx !== undefined) {
+          entry.quantities[targetIdx] += (r.quantities[i] || 0);
+        }
+      }
+    }
+  }
+
+  // 数量が全日0の商品は除外
+  const finalRows = Array.from(rowMap.values()).filter(r => r.quantities.some(q => q > 0));
+
+  return {
+    dates: sortedDates,
+    rows: finalRows,
+    warnings: allWarnings,
+    sheetNames: parsedSheets.map(s => s.sheetName),
+  };
 }
