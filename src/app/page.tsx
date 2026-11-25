@@ -46,6 +46,7 @@ export default function Home() {
     existingCount?: number;
     overlappingProducts?: OverlappingProduct[];
     skippedProductsCount: number;
+    unmatchedItems?: string[];
     nameMatchedCount?: number;
     warnings: string[];
   };
@@ -652,6 +653,26 @@ export default function Home() {
                 </div>
               )}
 
+              {/* 未登録スキップ商品の案内 */}
+              {preview.unmatchedItems && preview.unmatchedItems.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="flex items-center gap-1.5 font-bold mb-1">
+                    <span>⚠️</span>
+                    <span>マスタ未登録のためスキップされる商品（計 {preview.unmatchedItems.length} 品目）</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 my-1.5">
+                    {preview.unmatchedItems.map((name, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 font-medium text-[11px]">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    ※上記商品は除外して登録されます。後からマスタに商品・別名を登録して再アップロードすれば、「追加登録」でいつでも取り込めます。
+                  </p>
+                </div>
+              )}
+
               {/* 2つの選択カード */}
               <div className="space-y-3 pt-1">
                 {/* 選択肢1: 追加 */}
@@ -752,11 +773,31 @@ export default function Home() {
                 </div>
               )}
 
-              {preview.skippedProductsCount > 0 && (
+              {preview.unmatchedItems && preview.unmatchedItems.length > 0 ? (
+                <div className="mt-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="flex items-center gap-1.5 font-bold mb-1">
+                    <span>⚠️</span>
+                    <span>販売商品マスタ未登録のためスキップされる商品（計 {preview.unmatchedItems.length} 品目）</span>
+                  </div>
+                  <p className="leading-relaxed opacity-90 mb-1.5">
+                    以下の商品は商品マスタに存在しないため、今回の取り込みから除外されます（残りの登録済み {preview.rows.length} 品目のみを登録します）。
+                  </p>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {preview.unmatchedItems.map((name, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded-md bg-amber-200/80 dark:bg-amber-900/70 font-semibold text-[11px]">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    💡 <strong>後から追加可能:</strong> 企業ロス統括マネージャーの「販売商品マスタ設定」で商品や別名を登録した後に、再度このファイルをアップロードすると、追加した商品だけを「追加登録」で安全に取り込めます。
+                  </p>
+                </div>
+              ) : preview.skippedProductsCount > 0 ? (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   ※販売商品マスタに未登録のためスキップした商品: {preview.skippedProductsCount}品目
                 </p>
-              )}
+              ) : null}
               {preview.nameMatchedCount !== undefined && preview.nameMatchedCount > 0 && (
                 <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-1.5">
                   ✓ 商品コード未入力等のうち、{preview.nameMatchedCount}品目を「商品名」で自動照合して取り込みました。

@@ -210,18 +210,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // 発注数量があるにもかかわらず商品マスタに該当しない商品が存在する場合はエラーで中断
-    if (unmatchedItems.size > 0) {
+    // 未登録商品（マスタに該当しない商品）の判定
+    // 6品目以上の場合は誤登録防止のためエラーで中断
+    if (unmatchedItems.size > 5) {
       const items = Array.from(unmatchedItems);
-      const errorMsg =
-        items.length === 1
-          ? `「${items[0]}」という商品が販売商品マスタに登録されていません。`
-          : `${items.slice(0, 3).map(name => `「${name}」`).join('、')}${items.length > 3 ? ` など計${items.length}品目` : ''}という商品が販売商品マスタに登録されていません。`;
+      const errorMsg = `販売商品マスタに未登録の商品が多すぎます（計${items.length}品目：${items.slice(0, 3).map(name => `「${name}」`).join('、')} など）。`;
 
       return NextResponse.json(
         {
           error: errorMsg,
-          details: '商品マスタの登録内容や、Excel内の商品名・商品コードをご確認ください。未登録の場合は企業ロス統括管理者の「販売商品マスタ設定」から商品を登録してください。',
+          details: 'マスタ未登録の商品が6品目以上あるため読み込みを中断しました。シート選択やエクセル内の商品名をご確認いただくか、企業ロス統括管理者の「販売商品マスタ設定」から事前に商品を登録してください。',
         },
         { status: 400 }
       );
@@ -232,8 +230,8 @@ export async function POST(req: Request) {
     if (rows.length === 0) {
       return NextResponse.json(
         {
-          error: '発注データが1件も見つかりませんでした。',
-          details: 'オーダー表内の発注数（1個以上）が入力された行をご確認ください。',
+          error: '有効な商品発注データが1件も見つかりませんでした。',
+          details: '販売商品マスタに登録されている商品で、発注数（1個以上）が入力された行をご確認ください。',
         },
         { status: 400 }
       );
@@ -304,8 +302,9 @@ export async function POST(req: Request) {
         existingDates,
         existingCount: existingRows.length,
         overlappingProducts,
-        skippedProductsCount: 0,
-        skippedSample: [],
+        skippedProductsCount: unmatchedItems.size,
+        unmatchedItems: Array.from(unmatchedItems),
+        skippedSample: Array.from(unmatchedItems),
         nameMatchedCount,
         warnings: parsed.warnings,
       });
@@ -380,6 +379,7 @@ export async function POST(req: Request) {
       ? `${parsed.dates[0].date} 〜 ${parsed.dates[parsed.dates.length - 1].date}`
       : '';
     const actionLabel = importType === 'append' ? '追加登録' : '置き換え登録';
+    const skippedMsg = unmatchedItems.size > 0 ? ` ※マスタ未登録のためスキップ: ${unmatchedItems.size}品目（${Array.from(unmatchedItems).join('、')}）` : '';
     await logActivity({
       tenantId,
       userId: user.id,
@@ -387,8 +387,8 @@ export async function POST(req: Request) {
       action: 'IMPORT',
       category: 'order',
       tableName: 'store_sales_orders',
-      description: `オーダー表を${actionLabel}しました（${rows.length}品目・計${ordersCount}件${nameMatchedCount > 0 ? ` ※商品名一致による補完${nameMatchedCount}件含む` : ''} / 対象期間: ${dateRangeStr}${parsed.sheetNames ? ` / シート: ${parsed.sheetNames.join(', ')}` : ''}）`,
-      newData: { ordersCount, productsCount: rows.length, datesCount: parsed.dates.length, nameMatchedCount, importType, sheetNames: parsed.sheetNames },
+      description: `オーダー表を${actionLabel}しました（${rows.length}品目・計${ordersCount}件${nameMatchedCount > 0 ? ` ※商品名一致による補完${nameMatchedCount}件含む` : ''}${skippedMsg} / 対象期間: ${dateRangeStr}${parsed.sheetNames ? ` / シート: ${parsed.sheetNames.join(', ')}` : ''}）`,
+      newData: { ordersCount, productsCount: rows.length, datesCount: parsed.dates.length, nameMatchedCount, importType, sheetNames: parsed.sheetNames, skippedProductsCount: unmatchedItems.size, unmatchedItems: Array.from(unmatchedItems) },
     });
 
     return NextResponse.json({
@@ -400,8 +400,9 @@ export async function POST(req: Request) {
       nameMatchedCount,
       importType,
       sheetNames: parsed.sheetNames,
-      skippedProductsCount: 0,
-      skippedSample: [],
+      skippedProductsCount: unmatchedItems.size,
+      unmatchedItems: Array.from(unmatchedItems),
+      skippedSample: Array.from(unmatchedItems),
     });
   } catch (error: any) {
     console.error('Import weekly orders error:', error);

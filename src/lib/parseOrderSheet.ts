@@ -192,6 +192,7 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
   // 各日付に対する「オーダー」列インデックスを特定
   const dates: ParsedOrderDate[] = [];
   const orderCols: number[] = [];
+  const validDateCols: { col: number; y: number; m: number; d: number }[] = [];
 
   for (let i = 0; i < dateCols.length; i++) {
     const start = dateCols[i].col;
@@ -216,30 +217,28 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
       }
     }
 
-    if (orderCol < 0 && start === end) {
-      orderCol = start;
+    // オーダー列が見つからない日付（例: B2セル等に残る過去の日付など）は日付列から除外してスキップ
+    if (orderCol < 0) {
+      continue;
     }
 
     const dt = dateCols[i];
     const dateStr = `${dt.y}-${String(dt.m).padStart(2, '0')}-${String(dt.d).padStart(2, '0')}`;
-    if (orderCol < 0) {
-      warnings.push(`シート「${worksheet.name}」: ${dt.m}月${dt.d}日の範囲に「オーダー」列が見つからなかったため、この日は読み込みません。`);
-      continue;
-    }
-
     dates.push({ date: dateStr, label: `${dt.m}月${dt.d}日` });
     orderCols.push(orderCol);
+    validDateCols.push(dt);
   }
 
   if (dates.length === 0) {
     return null;
   }
 
-  // 3. 商品コード列と商品名列の動的特定（1〜日付列直前をスキャン）
+  // 3. 商品コード列と商品名列の動的特定（1〜有効な最初の日付列直前をスキャン）
   let codeCol = -1;
   let nameCol = -1;
   const priceCols = new Set<number>();
-  const scanEndCol = firstDateCol > 1 ? firstDateCol : 6;
+  const effectiveFirstDateCol = validDateCols.length > 0 ? validDateCols[0].col : firstDateCol;
+  const scanEndCol = effectiveFirstDateCol > 1 ? effectiveFirstDateCol : 6;
 
   for (let r = Math.max(1, dateRowNumber - 1); r <= headerRowNumber; r++) {
     const row = worksheet.getRow(r);
