@@ -74,7 +74,7 @@ export default function NavigationHeader() {
             alt="Bakery Batch Engine" 
             className="h-14 sm:h-20 w-auto object-contain drop-shadow-sm rounded-lg"
           />
-          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.19</span>
+          <span className={`text-xs font-bold mb-2 ${headerSubtitleClass}`}>Ver. 5.20</span>
         </Link>
         
         {/* ユーザー情報＆ログアウト */}
@@ -215,9 +215,7 @@ export default function NavigationHeader() {
               <Link href="/store-manager/waste" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/waste' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📸 ロスパン登録</Link>
               <Link href="/store-manager/analytics" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/analytics' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>📊 実績解析</Link>
               <Link href="/store-manager/profile" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/profile' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏪 店舗基礎データ</Link>
-              {(role === 'company_loss_manager' || role === 'area_loss_manager') && (
-                <Link href="/store-manager/products" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/products' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏷️ 販売商品マスタ</Link>
-              )}
+              <Link href="/store-manager/products" className={`font-bold flex-shrink-0 ${pathname === '/store-manager/products' ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-800'}`}>🏷️ 販売商品マスタ</Link>
             </>
           )}
         </div>

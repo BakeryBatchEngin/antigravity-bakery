@@ -14,9 +14,9 @@ async function resolveTenantId(db: any, user: any): Promise<number | null> {
   return null;
 }
 
-// 販売商品マスタの閲覧権限チェック（企業ロス統括管理者・エリアロス統括管理者・管理者・システム管理者）
+// 販売商品マスタの閲覧権限チェック（企業ロス統括管理者・エリアロス統括管理者・店舗管理者・管理者・システム管理者）
 function canViewSalesProducts(role: string): boolean {
-  return ['company_loss_manager', 'area_loss_manager', 'admin', 'super_admin'].includes(role);
+  return ['company_loss_manager', 'area_loss_manager', 'store_loss_manager', 'admin', 'super_admin'].includes(role);
 }
 
 // 販売商品マスタの管理（変更・削除）権限チェック（企業ロス統括管理者・管理者・システム管理者のみ）

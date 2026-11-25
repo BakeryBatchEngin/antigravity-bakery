@@ -43,7 +43,9 @@ const PRESET_CATEGORIES = [
 
 export default function SalesProductsMasterPage() {
   const { user } = useAuth();
+  const isStoreManager = user?.role === 'store_loss_manager';
   const isAreaManager = user?.role === 'area_loss_manager';
+  const isReadOnly = isStoreManager || isAreaManager;
 
   const [products, setProducts] = useState<SalesProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -284,11 +286,16 @@ export default function SalesProductsMasterPage() {
                     閲覧専用モード（エリアロス統括マネージャー）
                   </span>
                 )}
+                {isStoreManager && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full border border-amber-300">
+                    閲覧・ダウンロード専用（店舗管理者）
+                  </span>
+                )}
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1.5 ml-8">
-              {isAreaManager
-                ? 'エリアロス統括マネージャー権限のため、販売商品マスタは閲覧・Excel出力のみ可能です。（新規登録・編集・削除は企業ロス統括管理者または管理者のみ実行できます）'
+              {isReadOnly
+                ? `${isStoreManager ? '店舗管理者' : 'エリアロス統括マネージャー'}権限のため、販売商品マスタは閲覧・Excel出力（ダウンロード）のみ可能です。（新規登録・編集・削除は企業ロス統括管理者または管理者のみ実行できます）`
                 : 'ここに登録された商品（商品名）のみが、各店舗の「オーダー表 一括読込」で取り込まれます。仕込みエンジンの商品マスタとは完全に独立しています。'}
             </p>
           </div>
@@ -303,7 +310,7 @@ export default function SalesProductsMasterPage() {
               <span>Excel出力（テンプレート）</span>
             </a>
 
-            {!isAreaManager && (
+            {!isReadOnly && (
               <>
                 <input
                   type="file"
@@ -401,8 +408,8 @@ export default function SalesProductsMasterPage() {
             </p>
             {products.length === 0 && (
               <p className="text-slate-500 text-xs sm:text-sm max-w-xl mx-auto">
-                {isAreaManager
-                  ? '現在登録されている販売商品マスタはありません。（エリアロス統括マネージャーは閲覧専用です）'
+                {isReadOnly
+                  ? '現在登録されている販売商品マスタはありません。（閲覧専用モードです）'
                   : '右上の「Excel出力（テンプレート）」から雛形をダウンロードして「Excel一括登録・更新」で読み込むか、「新規商品を追加」ボタンから登録してください。'}
               </p>
             )}
@@ -417,7 +424,7 @@ export default function SalesProductsMasterPage() {
                   <th className="py-3 px-4 whitespace-nowrap text-right">価格</th>
                   <th className="py-3 px-4 whitespace-nowrap">カテゴリー</th>
                   <th className="py-3 px-4">商品の特性（AI分析・認識用テキスト）</th>
-                  {!isAreaManager && <th className="py-3 px-4 text-right whitespace-nowrap">操作</th>}
+                  {!isReadOnly && <th className="py-3 px-4 text-right whitespace-nowrap">操作</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
@@ -462,7 +469,7 @@ export default function SalesProductsMasterPage() {
                         <span className="text-slate-400 text-xs">―</span>
                       )}
                     </td>
-                    {!isAreaManager && (
+                    {!isReadOnly && (
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
                           <button
@@ -493,7 +500,7 @@ export default function SalesProductsMasterPage() {
       </div>
 
       {/* 新規作成・編集モーダル */}
-      {isModalOpen && !isAreaManager && (
+      {isModalOpen && !isReadOnly && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
