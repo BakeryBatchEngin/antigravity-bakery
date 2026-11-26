@@ -18,10 +18,21 @@ const DASH_LONG_VOWEL_REGEX = /[\u2010-\u2015\u2212\uFF0D\u30FC\-]/g;
 const TILDE_REGEX = /[\u301C\uFF5E\u007E]/g;
 
 // 各種空白（全角、半角、改行、タブ、ノーブレークスペース、ゼロ幅スペース）を表す正規表現
-const WHITESPACE_REGEX = /[\s\u00A0\u200B\uFEFF]+/g;
+const WHITESPACE_REGEX = /[\s\u3000\u00A0\u200B\uFEFF]+/g;
+
+// 先頭・末尾の全角・半角スペースおよび不可視空白を表す正規表現
+const LEADING_TRAILING_SPACE_REGEX = /^[\s\u3000\u00A0\u200B\uFEFF]+|[\s\u3000\u00A0\u200B\uFEFF]+$/g;
 
 // カッコ記号（全角・半角・角括弧・隅付き括弧など）を表す正規表現
 const BRACKETS_REGEX = /[()\[\]{}（）〔〕【】「」『』〈〉《》]/g;
+
+/**
+ * 前後の全角・半角スペースを完全にトリムします。
+ */
+export function cleanTrimming(str: string | null | undefined): string {
+  if (!str) return '';
+  return String(str).replace(LEADING_TRAILING_SPACE_REGEX, '');
+}
 
 /**
  * 商品名・コードを強力に正規化します。
@@ -54,6 +65,31 @@ export function normalizeWithoutPunctuation(name: string | null | undefined): st
   return norm
     .replace(BRACKETS_REGEX, '')
     .replace(/[・\.\,\/_\:;\*\+\=\|]/g, '');
+}
+
+/**
+ * スペースや期間メモ（例:「～1/11」「(〜1/11)」）が末尾に付加されている場合、
+ * スペース前方の主要な商品名部分を取り出します。
+ * 例: "キャラメルパイ　～1/11" -> "キャラメルパイ"
+ *     "キャラメルパイ (-1/11)" -> "キャラメルパイ"
+ */
+export function extractBaseProductName(name: string | null | undefined): string {
+  const clean = cleanTrimming(name);
+  if (!clean) return '';
+
+  // 全角・半角スペースで区切った最初の部分
+  const parts = clean.split(/[\s\u3000]+/);
+  if (parts.length > 1 && parts[0].length >= 2) {
+    return parts[0];
+  }
+
+  // 括弧で囲まれた期間指定（例:「(-1/11)」）の前の部分
+  const bracketMatch = clean.match(/^(.+?)[（\(][\d~～\-\/]+[）\)]$/);
+  if (bracketMatch && bracketMatch[1].trim().length >= 2) {
+    return bracketMatch[1].trim();
+  }
+
+  return clean;
 }
 
 /**

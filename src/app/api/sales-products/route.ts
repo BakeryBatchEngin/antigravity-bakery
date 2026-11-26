@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { resolveLossStoreId } from '@/lib/lossStore';
+import { cleanTrimming } from '@/lib/productNormalizer';
 
 // ログインユーザーの tenant_id を確実に解決するヘルパー
 async function resolveTenantId(db: any, user: any): Promise<number | null> {
@@ -99,14 +100,14 @@ export async function POST(req: Request) {
 
     // 新規作成または更新
     const id = body.id ? Number(body.id) : null;
-    const productCode = String(body.product_code || '').trim();
-    const productName = String(body.product_name || '').trim();
+    const productCode = cleanTrimming(body.product_code);
+    const productName = cleanTrimming(body.product_name);
     const retailPrice = Math.max(0, Math.round(Number(body.retail_price) || 0));
-    const category = String(body.category || '').trim();
-    const characteristics = String(body.characteristics || '').trim();
-    const alias1 = String(body.alias_1 || '').trim();
-    const alias2 = String(body.alias_2 || '').trim();
-    const alias3 = String(body.alias_3 || '').trim();
+    const category = cleanTrimming(body.category);
+    const characteristics = cleanTrimming(body.characteristics);
+    const alias1 = cleanTrimming(body.alias_1);
+    const alias2 = cleanTrimming(body.alias_2);
+    const alias3 = cleanTrimming(body.alias_3);
 
     if (!productCode || !productName) {
       return NextResponse.json(

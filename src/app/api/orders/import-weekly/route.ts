@@ -4,7 +4,7 @@ import { getSessionUser } from '@/lib/session';
 import { resolveLossStoreId } from '@/lib/lossStore';
 import { parseOrderSheet, getOrderWorkbookSheets } from '@/lib/parseOrderSheet';
 import { logActivity } from '@/lib/logger';
-import { normalizeProductName, normalizeWithoutPunctuation } from '@/lib/productNormalizer';
+import { normalizeProductName, normalizeWithoutPunctuation, cleanTrimming, extractBaseProductName } from '@/lib/productNormalizer';
 
 // オーダー表の取込API
 //   mode=get-sheets : アップロードされたExcel内の全シート名一覧を返す
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     const masterPunctuationMap = new Map<string, { productCode: string; productName: string }>();
 
     const registerNameEntry = (targetName: string, code: string, officialName: string) => {
-      const clean = String(targetName || '').trim();
+      const clean = cleanTrimming(targetName);
       if (!clean) return;
 
       const norm = normalizeProductName(clean);
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
         resolvedCode = row.productCode;
         resolvedName = masterCodeMap.get(row.productCode)!;
       }
-      // ② 商品名で照合（正式名 または 別名1〜3 の強力正規化一致 ＆ 記号・カッコ除去フォールバック）
+      // ② 商品名で照合（正式名 または 別名1〜3 の強力正規化一致 ＆ 記号・カッコ除去フォールバック ＆ ベース名照合）
       else if (row.productName) {
         const norm = normalizeProductName(row.productName);
         const matched = masterNameMap.get(norm);
@@ -159,6 +159,18 @@ export async function POST(req: Request) {
             resolvedCode = punctMatched.productCode;
             resolvedName = punctMatched.productName;
             nameMatchedCount++;
+          } else {
+            // スペースや期間メモ（「キャラメルパイ ～1/11」等）を除いたベース名でのフォールバック
+            const baseName = extractBaseProductName(row.productName);
+            if (baseName && baseName !== row.productName) {
+              const baseNorm = normalizeProductName(baseName);
+              const baseMatched = masterNameMap.get(baseNorm) || masterPunctuationMap.get(normalizeWithoutPunctuation(baseName));
+              if (baseMatched) {
+                resolvedCode = baseMatched.productCode;
+                resolvedName = baseMatched.productName;
+                nameMatchedCount++;
+              }
+            }
           }
         }
       }

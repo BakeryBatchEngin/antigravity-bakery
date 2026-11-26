@@ -22,28 +22,32 @@ export interface ParsedOrderSheet {
 // 日付を横に探すときの最大列間隔（この列数進んでも次の日付が出なければ終了）
 const MAX_DATE_GAP = 15;
 
-// 見出し文字を比較用に整える（半角ｶﾅ→全角、改行・空白の除去）
+// 見出し文字を比較用に整える（半角ｶﾅ→全角、改行・空白の完全除去）
 function normalizeHeader(value: unknown): string {
   return getTextValue(value)
     .normalize('NFKC')
-    .replace(/\s+/g, '');
+    .replace(/[\s\u3000\u00A0\u200B\uFEFF]+/g, '');
 }
 
-// セルの値から安全に文字列を取り出す
+// セルの値から安全に文字列を取り出し、全角・半角スペースをトリム
 function getTextValue(value: unknown): string {
+  let str = '';
   if (value === null || value === undefined) return '';
   if (typeof value === 'object') {
     if ('richText' in (value as any)) {
-      return (value as any).richText.map((t: any) => t.text).join('').trim();
+      str = (value as any).richText.map((t: any) => t.text).join('');
+    } else if ('text' in (value as any)) {
+      str = String((value as any).text ?? '');
+    } else if ('result' in (value as any)) {
+      str = String((value as any).result ?? '');
+    } else {
+      str = String(value);
     }
-    if ('text' in (value as any)) {
-      return String((value as any).text ?? '').trim();
-    }
-    if ('result' in (value as any)) {
-      return String((value as any).result ?? '').trim();
-    }
+  } else {
+    str = String(value);
   }
-  return String(value).trim();
+  // 全角スペース（\u3000）、半角スペース、不可視空白を先頭・末尾から完全除去
+  return str.replace(/^[\s\u3000\u00A0\u200B\uFEFF]+|[\s\u3000\u00A0\u200B\uFEFF]+$/g, '');
 }
 
 // セルの値から安全に数値を取り出す
@@ -284,14 +288,68 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
     }
   }
 
-  // フォールバック処理: ヘッダーで特定できなかった場合の判定
+  // 3.5 データ行サンプリングによる列の自動判定・補正
+  // ヘッダーで見出しが取得できなかった場合や、空欄列を誤認している場合、実際のデータ行を分析して正確に特定
+  const dataStartRow = headerRowNumber + 1;
+  const sampleRowCount = Math.min(25, Math.max(1, worksheet.rowCount - dataStartRow + 1));
+  const colStats = new Map<number, { textCount: number; numberCount: number; emptyCount: number }>();
+
+  for (let c = 1; c < scanEndCol; c++) {
+    colStats.set(c, { textCount: 0, numberCount: 0, emptyCount: 0 });
+  }
+
+  for (let r = dataStartRow; r < dataStartRow + sampleRowCount; r++) {
+    const row = worksheet.getRow(r);
+    for (let c = 1; c < scanEndCol; c++) {
+      const val = row.getCell(c).value;
+      const stats = colStats.get(c)!;
+      if (val === null || val === undefined || val === '') {
+        stats.emptyCount++;
+      } else if (typeof val === 'number') {
+        stats.numberCount++;
+      } else {
+        const str = getTextValue(val);
+        if (/^\d+(\.\d+)?$/.test(str)) {
+          stats.numberCount++;
+        } else if (str.length > 0) {
+          stats.textCount++;
+        } else {
+          stats.emptyCount++;
+        }
+      }
+    }
+  }
+
+  // 単価列の追加検出（数値がほとんどを占める列）
+  for (const [c, s] of colStats.entries()) {
+    if (s.numberCount >= Math.max(2, Math.floor(sampleRowCount * 0.4)) && s.textCount === 0) {
+      priceCols.add(c);
+    }
+  }
+
+  // 商品名列が未確定、または現在特定された列のテキスト出現数が0の場合、
+  // サンプリングでテキスト（商品名）が最も多く存在する列を商品名列とする
+  const currentNameTextCount = nameCol > 0 ? (colStats.get(nameCol)?.textCount || 0) : 0;
+  if (nameCol < 0 || currentNameTextCount === 0) {
+    let bestNameCol = -1;
+    let maxText = 0;
+    for (const [c, s] of colStats.entries()) {
+      if (!priceCols.has(c) && s.textCount > maxText) {
+        maxText = s.textCount;
+        bestNameCol = c;
+      }
+    }
+    if (bestNameCol > 0) {
+      nameCol = bestNameCol;
+    }
+  }
+
+  // 依然として未確定の場合の最終フォールバック
   if (nameCol < 0) {
     if (codeCol === 1 && priceCols.has(2)) {
-      // 1列目がcodeColと仮判定されたが2列目が単価の場合、実質1列目が商品名
       nameCol = 1;
       codeCol = -1;
     } else {
-      // 単価列以外の列で最初の列を商品名列とする
       for (let c = 1; c < scanEndCol; c++) {
         if (!priceCols.has(c) && c !== codeCol) {
           nameCol = c;
@@ -310,7 +368,6 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
   // 4. データ行の読み取り
   const rows: ParsedOrderRow[] = [];
   const rowCount = worksheet.rowCount;
-  const dataStartRow = headerRowNumber + 1;
 
   for (let r = dataStartRow; r <= rowCount; r++) {
     const row = worksheet.getRow(r);
@@ -319,13 +376,20 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
 
     if (!code && !name) continue;
 
-    const combined = (code + name).replace(/\s+/g, '');
+    // 「オーダー」「total」「予算」「合計」等が含まれる行は商品と見なさない
+    const checkTarget = (code + ' ' + name)
+      .normalize('NFKC')
+      .toLowerCase();
+
     if (
-      combined.includes('合計') ||
-      combined.includes('小計') ||
-      combined.includes('総合計') ||
-      combined.includes('平均') ||
-      combined.startsWith('※')
+      checkTarget.includes('オーダー') ||
+      checkTarget.includes('total') ||
+      checkTarget.includes('予算') ||
+      checkTarget.includes('合計') ||
+      checkTarget.includes('小計') ||
+      checkTarget.includes('総合計') ||
+      checkTarget.includes('平均') ||
+      checkTarget.trim().startsWith('※')
     ) {
       continue;
     }

@@ -8,6 +8,7 @@ import ManagerDashboardPage from "./manager/dashboard/page";
 import StatusCalendar from "@/components/StatusCalendar";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import ExcelJS from "exceljs";
 export default function Home() {
   const { user, activeStoreId, loading } = useAuth();
   const router = useRouter();
@@ -53,6 +54,9 @@ export default function Home() {
 
   // 確認用の表（プレビュー）の状態
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // アップロード元ファイル（ブラウザで保持）と選択シートのみにトリミングした軽量ファイル
+  const [rawWorkbookFile, setRawWorkbookFile] = useState<File | null>(null);
+  const [trimmedFile, setTrimmedFile] = useState<File | null>(null);
 
   // シート選択モーダル用ステート
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
@@ -65,44 +69,33 @@ export default function Home() {
   // 取込方法（追加/置き換え）選択モーダル用ステート
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
 
-  // ファイル選択時: まずExcel内の全シート名一覧を取得し、シート選択画面を表示
+  // ファイル選択時: ブラウザ側で直接Excelを解析して全シート名一覧を取得（大容量ファイルでもサーバー上限にかからず一瞬で完了）
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setPendingFile(file);
+    setRawWorkbookFile(file);
     setIsImporting(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('mode', 'get-sheets');
+      const buffer = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
 
-      const res = await fetch('/api/orders/import-weekly', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const resData = await res.json();
-      if (!res.ok) {
-        alert(`${resData.error || 'シートの読み込みに失敗しました'}\n詳細: ${resData.details || '不明なエラー'}`);
-        setPendingFile(null);
-        return;
-      }
-
-      const sheets: string[] = resData.sheets || [];
+      const sheets = wb.worksheets.map(ws => ws.name);
       if (sheets.length === 0) {
         alert('エクセルファイル内にワークシートが見つかりませんでした。');
-        setPendingFile(null);
+        setRawWorkbookFile(null);
         return;
       }
 
       setAvailableSheets(sheets);
-      setSelectedSheets([...sheets]); // デフォルトですべて選択
+      // ★初期状態は全未選択（ユーザー様ご要望：不要なシートのチェックを外す手間を省く）
+      setSelectedSheets([]);
       setIsSheetModalOpen(true);
     } catch (err: any) {
       console.error(err);
-      alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || '不明'}`);
-      setPendingFile(null);
+      alert(`エクセルの読み込みに失敗しました\n理由: ${err.message || 'ファイルが破損しているか、未対応の形式です。'}`);
+      setRawWorkbookFile(null);
     } finally {
       setIsImporting(false);
       if (excelInputRef.current) {
@@ -127,14 +120,17 @@ export default function Home() {
 
   const closeSheetModal = () => {
     setIsSheetModalOpen(false);
+    setRawWorkbookFile(null);
+    setTrimmedFile(null);
     setPendingFile(null);
     setAvailableSheets([]);
     setSelectedSheets([]);
   };
 
   // 選択したシート群で解析（プレビュー取得）を実行
+  // ブラウザ側で不要なシートを削除し、選択されたシートだけの超軽量Excelを作成してサーバーへ送信！（Vercelの4.5MB制限を完全回避）
   const handleProceedToPreview = async () => {
-    if (!pendingFile) return;
+    if (!rawWorkbookFile) return;
     if (selectedSheets.length === 0) {
       alert('読み込むシートを1つ以上選択してください。');
       return;
@@ -142,8 +138,28 @@ export default function Home() {
 
     setIsImporting(true);
     try {
+      const buffer = await rawWorkbookFile.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+
+      // 選択されなかったシートを削除して軽量化
+      const sheetsToRemove = wb.worksheets.filter(ws => !selectedSheets.includes(ws.name));
+      for (const ws of sheetsToRemove) {
+        wb.removeWorksheet(ws.id);
+      }
+      const trimmedBuffer = await wb.xlsx.writeBuffer();
+      const trimmedBlob = new Blob([trimmedBuffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const trimmed = new File([trimmedBlob], rawWorkbookFile.name, {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      setTrimmedFile(trimmed);
+      setPendingFile(trimmed);
+
       const formData = new FormData();
-      formData.append('file', pendingFile);
+      formData.append('file', trimmed);
       formData.append('mode', 'preview');
       formData.append('sheetNames', JSON.stringify(selectedSheets));
 
@@ -170,6 +186,8 @@ export default function Home() {
 
   // プレビューを閉じる
   const closePreview = () => {
+    setRawWorkbookFile(null);
+    setTrimmedFile(null);
     setPendingFile(null);
     setPreview(null);
     setIsConflictModalOpen(false);
@@ -177,7 +195,7 @@ export default function Home() {
 
   // 「登録実行」ボタン押下時
   const handleCommitClick = () => {
-    if (!pendingFile || !preview) return;
+    if ((!trimmedFile && !rawWorkbookFile && !pendingFile) || !preview) return;
 
     // すでにオーダーが登録されている日があれば、追加か置き換えかを尋ねるモーダルを表示
     if (preview.existingDates.length > 0) {
@@ -190,7 +208,8 @@ export default function Home() {
 
   // 取込実行（append: 追加, replace: 置き換え）
   const executeCommit = async (importType: 'append' | 'replace') => {
-    if (!pendingFile || !preview) return;
+    const fileToUpload = trimmedFile || pendingFile || rawWorkbookFile;
+    if (!fileToUpload || !preview) return;
 
     if (importType === 'replace') {
       const ok = window.confirm(
@@ -202,7 +221,7 @@ export default function Home() {
     setIsImporting(true);
     try {
       const formData = new FormData();
-      formData.append('file', pendingFile);
+      formData.append('file', fileToUpload);
       formData.append('mode', 'commit');
       formData.append('importType', importType);
       if (preview.sheetNames && preview.sheetNames.length > 0) {

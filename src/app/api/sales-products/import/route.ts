@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { resolveLossStoreId } from '@/lib/lossStore';
+import { cleanTrimming } from '@/lib/productNormalizer';
 import ExcelJS from 'exceljs';
 
 async function resolveTenantId(db: any, user: any): Promise<number | null> {
@@ -49,15 +50,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // セルから安全にテキストを取得するヘルパー
+    // セルから安全にテキストを取得し、全角・半角スペースをトリムするヘルパー
     const getCellText = (cell: any): string => {
       if (!cell || cell.value === null || cell.value === undefined) return '';
+      let str = '';
       if (typeof cell.value === 'object') {
-        if ('richText' in cell.value) return cell.value.richText.map((t: any) => t.text).join('').trim();
-        if ('text' in cell.value) return String(cell.value.text ?? '').trim();
-        if ('result' in cell.value) return String(cell.value.result ?? '').trim();
+        if ('richText' in cell.value) str = cell.value.richText.map((t: any) => t.text).join('');
+        else if ('text' in cell.value) str = String(cell.value.text ?? '');
+        else if ('result' in cell.value) str = String(cell.value.result ?? '');
+        else str = String(cell.value);
+      } else {
+        str = String(cell.value);
       }
-      return String(cell.value).trim();
+      return cleanTrimming(str);
     };
 
     // 1行目のヘッダーから列インデックスを特定（1始まり）
