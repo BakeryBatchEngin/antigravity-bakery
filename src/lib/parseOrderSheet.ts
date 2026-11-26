@@ -67,7 +67,14 @@ function parseDateCell(value: unknown): { y: number; m: number; d: number } | nu
     return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
   }
   if (typeof value === 'object' && value !== null && 'result' in (value as any)) {
-    return parseDateCell((value as any).result);
+    const res = (value as any).result;
+    if (res instanceof Date) {
+      return { y: res.getFullYear(), m: res.getMonth() + 1, d: res.getDate() };
+    }
+    const strMatch = String(res).trim().match(/^(\d{4})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/);
+    if (strMatch) {
+      return { y: parseInt(strMatch[1], 10), m: parseInt(strMatch[2], 10), d: parseInt(strMatch[3], 10) };
+    }
   }
   if (typeof value === 'number') {
     // Excelのシリアル値のうち、現実的な日付範囲（20000〜80000: 約1954年〜2119年）だけを日付とみなす
@@ -75,9 +82,15 @@ function parseDateCell(value: unknown): { y: number; m: number; d: number } | nu
     const date = new Date(Math.round((value - 25569) * 86400 * 1000));
     return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate() };
   }
-  const match = String(value).trim().match(/^(\d{4})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/);
+  const str = String(value).trim();
+  const match = str.match(/^(\d{4})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/);
   if (match) {
     return { y: parseInt(match[1], 10), m: parseInt(match[2], 10), d: parseInt(match[3], 10) };
+  }
+  const matchMD = str.match(/^(\d{1,2})[月\/\-](\d{1,2})日?/);
+  if (matchMD) {
+    const currentYear = new Date().getFullYear();
+    return { y: currentYear, m: parseInt(matchMD[1], 10), d: parseInt(matchMD[2], 10) };
   }
   return null;
 }
@@ -95,102 +108,93 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
   const warnings: string[] = [];
   const maxScanRows = Math.min(worksheet.rowCount, 15);
 
-  // 1. 日付行を動的に探索（1行目〜15行目をスキャン）
-  let dateRowNumber = -1;
-  let maxDateCount = 0;
+  // 1. 日付行＆ヘッダー行を動的に探索（1行目〜15行目をスキャン）
+  // 単に日付セルの個数だけでなく、直下に「オーダー」「発注」見出しがいくつ存在するかを総合判定（スコアリング）
+  // これにより、売上金額（20000〜80000）の数値を日付と誤認してデータ行を日付行と判定する事故を完全に防止
+  let bestDateRow = -1;
+  let bestScore = -1;
+  let bestDateCols: { col: number; y: number; m: number; d: number }[] = [];
+  let bestHeaderRow = -1;
 
   for (let r = 1; r <= maxScanRows; r++) {
     const row = worksheet.getRow(r);
-    let dateCount = 0;
-    const maxCol = Math.max(row.cellCount, 40);
+    const maxCol = Math.max(row.cellCount, 60);
+    const candidateDates: { col: number; y: number; m: number; d: number }[] = [];
+    let lastFoundCol = -1;
 
     for (let c = 1; c <= maxCol; c++) {
       const cell = row.getCell(c);
       if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
         continue;
       }
-      if (parseDateCell(cell.value)) {
-        dateCount++;
+
+      const parsed = parseDateCell(cell.value);
+      if (parsed) {
+        const dateStr = `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+        const alreadyExists = candidateDates.some(
+          d => `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` === dateStr
+        );
+        if (!alreadyExists) {
+          candidateDates.push({ col: c, ...parsed });
+          lastFoundCol = c;
+        }
+      } else if (lastFoundCol > 0 && c - lastFoundCol >= MAX_DATE_GAP) {
+        break;
       }
     }
 
-    if (dateCount >= 2 && dateCount > maxDateCount) {
-      maxDateCount = dateCount;
-      dateRowNumber = r;
-    }
-  }
-
-  // 日付行が見つからないシートはnullを返してスキップ可能にする
-  if (dateRowNumber < 0) {
-    return null;
-  }
-
-  const dateRow = worksheet.getRow(dateRowNumber);
-  const maxCol = Math.max(dateRow.cellCount, 60);
-
-  // 日付列の一覧を収集
-  const dateCols: { col: number; y: number; m: number; d: number }[] = [];
-  let firstDateCol = -1;
-  let lastDateCol = -1;
-
-  for (let c = 1; c <= maxCol; c++) {
-    const cell = dateRow.getCell(c);
-    if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
+    if (candidateDates.length < 2) {
       continue;
     }
 
-    const parsed = parseDateCell(cell.value);
-    if (parsed) {
-      if (firstDateCol === -1) firstDateCol = c;
-      const dateStr = `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
-      const alreadyExists = dateCols.some(
-        d => `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` === dateStr
-      );
-      if (!alreadyExists) {
-        dateCols.push({ col: c, ...parsed });
-        lastDateCol = c;
+    // 直下（+1〜+4行以内）で「オーダー」「発注」見出しがいくつ一致するか探索
+    let maxOrderMatches = 0;
+    let matchedHeaderRow = -1;
+    const maxHeaderRow = Math.min(worksheet.rowCount, r + 4);
+
+    for (let hr = r + 1; hr <= maxHeaderRow; hr++) {
+      const hRow = worksheet.getRow(hr);
+      let matches = 0;
+      for (let i = 0; i < candidateDates.length; i++) {
+        const start = candidateDates[i].col;
+        const end = i + 1 < candidateDates.length ? candidateDates[i + 1].col - 1 : start + MAX_DATE_GAP - 1;
+        for (let c = start; c <= end; c++) {
+          const txt = normalizeHeader(hRow.getCell(c).value);
+          if (txt === 'オーダー' || txt === '発注' || txt === 'オーダー数' || txt === '発注数') {
+            matches++;
+            break;
+          }
+        }
       }
-    } else if (lastDateCol > 0 && c - lastDateCol >= MAX_DATE_GAP) {
-      break;
+      if (matches > maxOrderMatches) {
+        maxOrderMatches = matches;
+        matchedHeaderRow = hr;
+      }
+    }
+
+    // スコアリング: 直下にオーダー見出しがある行を最優先！
+    // オーダー見出しが2個以上一致していれば超高スコア（matches * 100 + 日付数）
+    // オーダー見出しが0個の行（金額データ行の誤認など）はスコア0で除外
+    const score = maxOrderMatches >= 2
+      ? (maxOrderMatches * 100) + candidateDates.length
+      : (maxOrderMatches > 0 ? candidateDates.length : 0);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestDateRow = r;
+      bestDateCols = candidateDates;
+      bestHeaderRow = matchedHeaderRow > 0 ? matchedHeaderRow : r + 1;
     }
   }
 
-  if (dateCols.length === 0) {
+  // 日付行またはオーダー見出しが見つからないシートはnullを返してスキップ可能にする
+  if (bestDateRow < 0 || bestDateCols.length === 0 || bestScore <= 0) {
     return null;
   }
 
-  // 2. 「オーダー」列＆ヘッダー行を探索（日付行の直下〜+4行以内）
-  let headerRowNumber = -1;
-  let bestOrderMatches = 0;
-  const maxHeaderSearchRow = Math.min(worksheet.rowCount, dateRowNumber + 4);
-
-  for (let r = dateRowNumber + 1; r <= maxHeaderSearchRow; r++) {
-    const row = worksheet.getRow(r);
-    let orderMatches = 0;
-
-    for (let i = 0; i < dateCols.length; i++) {
-      const start = dateCols[i].col;
-      const end = i + 1 < dateCols.length ? dateCols[i + 1].col - 1 : start + MAX_DATE_GAP - 1;
-
-      for (let c = start; c <= end; c++) {
-        const text = normalizeHeader(row.getCell(c).value);
-        if (text === 'オーダー' || text === '発注' || text === 'オーダー数' || text === '発注数') {
-          orderMatches++;
-          break;
-        }
-      }
-    }
-
-    if (orderMatches > bestOrderMatches) {
-      bestOrderMatches = orderMatches;
-      headerRowNumber = r;
-    }
-  }
-
-  if (headerRowNumber < 0) {
-    headerRowNumber = dateRowNumber + 1;
-  }
-
+  const dateRowNumber = bestDateRow;
+  const headerRowNumber = bestHeaderRow;
+  const dateCols = bestDateCols;
   const headerRow = worksheet.getRow(headerRowNumber);
 
   // 各日付に対する「オーダー」列インデックスを特定
@@ -241,7 +245,7 @@ function parseSingleWorksheet(worksheet: ExcelJS.Worksheet): { dates: ParsedOrde
   let codeCol = -1;
   let nameCol = -1;
   const priceCols = new Set<number>();
-  const effectiveFirstDateCol = validDateCols.length > 0 ? validDateCols[0].col : firstDateCol;
+  const effectiveFirstDateCol = validDateCols.length > 0 ? validDateCols[0].col : (dateCols.length > 0 ? dateCols[0].col : 6);
   const scanEndCol = effectiveFirstDateCol > 1 ? effectiveFirstDateCol : 6;
 
   for (let r = Math.max(1, dateRowNumber - 1); r <= headerRowNumber; r++) {
